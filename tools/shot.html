@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>shot harness</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&family=Secular+One&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #140a1c; display: flex; gap: 10px; padding: 10px; align-items: flex-start; }
+  canvas { width: 420px; height: 600px; }
+  #log { color: #fff; font: 12px monospace; white-space: pre; }
+</style>
+</head>
+<body>
+<canvas id="c" width="420" height="600"></canvas>
+<div id="log"></div>
+<script src="../js/engine.js"></script>
+<script src="../js/atelier.js"></script>
+<script src="../js/claw.js"></script>
+<script>
+// Scenario via query: ?x=250&t=3.5  → move claw to x, drop, and freeze the render at t seconds after drop.
+// Runs the fixed steps synchronously (no rAF) so headless screenshots are deterministic.
+const q = new URLSearchParams(location.search);
+const log = [];
+const seed = q.get('seed');
+if (seed) { let s = parseInt(seed, 10); Math.random = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; }; }
+const game = new ClawGame(document.getElementById('c'), { onEvent: (t, d) => log.push((game.time).toFixed(2) + ' ' + t + (d && d.q != null ? ' q=' + d.q.toFixed(2) : '')) });
+game.setEnabled(true);
+// x=auto aims at the centre of the highest present (what a human would do).
+let targetX = parseFloat(q.get('x') || '250');
+if (q.get('x') === 'auto') {
+  const top = game.presents.slice().sort((a, b) => a.body.position.y - b.body.position.y)[0];
+  targetX = Math.max(68, Math.min(366, top.body.position.x + (parseFloat(q.get('aim') || '0'))));
+}
+const T = parseFloat(q.get('t') || '0');
+const w = game.world, dt = w.fixedDt;
+// move to x
+game.claw.x = targetX;
+if (T > 0) {
+  game.drop();
+  const steps = Math.round(T / dt);
+  for (let i = 0; i < steps; i++) { w.step(dt); }
+}
+function draw() {
+  if (document.fonts && document.fonts.status !== 'loaded') game.refreshLayers();
+  game.render(1);
+  document.getElementById('log').textContent = ['state=' + game.claw.state, 'presents=' + game.presents.length, ...log].join('\n');
+}
+document.fonts.ready.then(() => { game.refreshLayers(); draw(); });
+draw();
+</script>
+</body>
+</html>

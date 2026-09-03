@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>mobile frame</title>
+<style>
+  body { margin: 0; background: #222; display: flex; gap: 16px; padding: 10px; }
+  iframe { width: 390px; height: 844px; border: 0; background: #000; }
+</style>
+</head>
+<body>
+<script>
+  // ?page=<relative url with query> — renders index.html inside a 390×844 iframe (iPhone 14 size).
+  const q = new URLSearchParams(location.search);
+  const f = document.createElement('iframe');
+  f.src = '../index.html' + (q.get('page') || '');
+  document.body.appendChild(f);
+</script>
+</body>
+</html>

@@ -1,0 +1,1789 @@
+<title>physics-2d — live demo</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0f1a;
+    --panel: #111827;
+    --border: #1f2937;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 20% -10%, #16213a 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 40px;
+  }
+  header { max-width: 900px; width: 100%; margin-bottom: 16px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 code { font-family: ui-monospace, 'SF Mono', Consolas, monospace; color: var(--accent); background: rgba(56,189,248,0.1); padding: 1px 7px; border-radius: 5px; font-size: 0.85em; }
+  header p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; max-width: 640px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; max-width: 900px; width: 100%; margin: 18px 0 10px; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+    padding: 7px 14px; border-radius: 999px; font-size: 0.85rem; cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab:hover { color: var(--text); border-color: #334155; }
+  .tab.active { background: var(--accent); color: #06222f; border-color: var(--accent); font-weight: 600; }
+  #reset {
+    margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: 7px 14px; border-radius: 999px; font-size: 0.85rem; cursor: pointer;
+  }
+  #reset:hover { color: var(--text); border-color: #334155; }
+
+  .stage {
+    max-width: 900px; width: 100%; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--border); box-shadow: 0 20px 50px -20px rgba(0,0,0,0.6);
+    background: #0b1220;
+  }
+  canvas { display: block; width: 100%; height: auto; background: #0b1220; }
+  canvas.aim { cursor: crosshair; }
+  canvas.drop { cursor: copy; }
+
+  .footer-row {
+    max-width: 900px; width: 100%; display: flex; justify-content: space-between;
+    align-items: baseline; gap: 16px; margin-top: 10px; font-size: 0.8rem;
+  }
+  #hint { color: var(--muted); line-height: 1.5; }
+  #stats { color: #64748b; font-family: ui-monospace, 'SF Mono', Consolas, monospace; white-space: nowrap; }
+
+  .legend { max-width: 900px; width: 100%; margin-top: 14px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+</style>
+
+<header>
+  <h1>2D Physics Engine — <code>skills/physics-2d</code></h1>
+  <p>Live sanity-check demo for the skill: real bodies, driven through the actual <code>scripts/*.js</code> engine (bundled unmodified, no rewrite), rendered on canvas so the tests and the docs can be eyeballed, not just trusted.</p>
+</header>
+
+<div class="tabs">
+  <button class="tab" data-key="bounce">Bounce &amp; Friction</button>
+  <button class="tab" data-key="stack">Stacking &amp; Sleep</button>
+  <button class="tab" data-key="joints">Joints</button>
+  <button class="tab" data-key="raycast">Raycast</button>
+  <button class="tab" data-key="playground">Playground</button>
+  <button id="reset">Reset scenario</button>
+</div>
+
+<div class="stage">
+  <canvas id="c"></canvas>
+</div>
+
+<div class="footer-row">
+  <div id="hint"></div>
+  <div id="stats"></div>
+</div>
+
+<div class="legend">
+  <span><span class="swatch" style="background:#334155"></span> static</span>
+  <span><span class="swatch" style="background:#38bdf8"></span> awake</span>
+  <span><span class="swatch" style="background:#1b3a4a"></span> asleep (dimmed)</span>
+</div>
+
+<script>
+// Bundled from skills/physics-2d/scripts/*.js — a tiny CommonJS shim so the
+// engine's Node modules run unmodified in the browser for this demo.
+(function () {
+  const __modules = {};
+  const __defs = {};
+  function define(name, factory) { __defs[name] = factory; }
+  function __require(name) {
+    name = name.replace('./', '');
+    if (__modules[name]) return __modules[name].exports;
+    const module = { exports: {} };
+    __modules[name] = module;
+    __defs[name](module, module.exports, __require);
+    return module.exports;
+  }
+
+  define("vec2.js", function (module, exports, require) {
+    // vec2.js — 2D vector + cross-product math for rigid-body physics.
+    // Pairs with references/foundations.md.
+    //
+    // Vectors are plain {x, y} objects. Most ops RETURN A NEW vector (functional
+    // style) so you never accidentally alias a body's position into a temp. The
+    // hot inner loop of the solver (solver.js) uses the *Mut in-place variants to
+    // avoid per-contact allocation.
+    //
+    // The cross products are the part people get wrong. In 2D you treat scalars as
+    // the z-component of a 3D vector, which gives three distinct operations:
+    //   cross(a, b)   : 2D × 2D → scalar  (the z of the 3D cross)   a.x*b.y - a.y*b.x
+    //   crossVS(v, s) : 2D × scalar → 2D                            ( s*v.y, -s*v.x )
+    //   crossSV(s, v) : scalar × 2D → 2D                            (-s*v.y,  s*v.x )
+    // crossSV(ω, r) is exactly "velocity contributed by spin ω at offset r from the
+    // center of mass" — it shows up everywhere in contact math, so keep it straight.
+    
+    const Vec2 = {
+      create(x = 0, y = 0) { return { x, y }; },
+      clone(a) { return { x: a.x, y: a.y }; },
+      set(out, x, y) { out.x = x; out.y = y; return out; },
+      copy(out, a) { out.x = a.x; out.y = a.y; return out; },
+    
+      add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; },
+      sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; },
+      scale(a, s) { return { x: a.x * s, y: a.y * s }; },
+      neg(a) { return { x: -a.x, y: -a.y }; },
+    
+      // a + b*s  — fused multiply-add, the single most common physics update.
+      addScaled(a, b, s) { return { x: a.x + b.x * s, y: a.y + b.y * s }; },
+    
+      dot(a, b) { return a.x * b.x + a.y * b.y; },
+    
+      // 2D × 2D → scalar. Sign tells you which side b is of a (CCW positive).
+      cross(a, b) { return a.x * b.y - a.y * b.x; },
+      // 2D × scalar → 2D.
+      crossVS(v, s) { return { x: s * v.y, y: -s * v.x }; },
+      // scalar × 2D → 2D. crossSV(ω, r) = linear velocity at r due to spin ω.
+      crossSV(s, v) { return { x: -s * v.y, y: s * v.x }; },
+    
+      lenSq(a) { return a.x * a.x + a.y * a.y; },
+      len(a) { return Math.hypot(a.x, a.y); },
+      distSq(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; },
+      dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); },
+    
+      normalize(a) {
+        const l = Math.hypot(a.x, a.y);
+        return l > 1e-12 ? { x: a.x / l, y: a.y / l } : { x: 0, y: 0 };
+      },
+      // 90° left turn (CCW). perp(v) is the outward face direction from an edge
+      // wound CCW.
+      perp(a) { return { x: -a.y, y: a.x }; },
+    
+      // Rotate by angle (radians). Used to take a shape's local vertices/normals
+      // into world space given the body's orientation.
+      rotate(a, angle) {
+        const c = Math.cos(angle), s = Math.sin(angle);
+        return { x: a.x * c - a.y * s, y: a.x * s + a.y * c };
+      },
+    
+      // --- In-place variants for the allocation-sensitive solver inner loop ---
+      addMut(out, b) { out.x += b.x; out.y += b.y; return out; },
+      addScaledMut(out, b, s) { out.x += b.x * s; out.y += b.y * s; return out; },
+      subMut(out, b) { out.x -= b.x; out.y -= b.y; return out; },
+    };
+    
+    if (typeof module !== 'undefined') module.exports = Vec2;
+    
+  });
+
+  define("shapes.js", function (module, exports, require) {
+    // shapes.js — collision shapes (circle, convex polygon) plus the mass and
+    // moment-of-inertia math that turns a shape + density into the numbers the
+    // integrator needs. Pairs with references/foundations.md.
+    //
+    // Two shape kinds cover the vast majority of 2D games: circles and convex
+    // polygons (a box is just a 4-vertex polygon). Concave shapes are built by
+    // gluing several convex polygons onto one body — never feed a concave vertex
+    // loop to SAT, it will silently give wrong contacts.
+    //
+    // Convention: polygon vertices are stored CCW with the centroid at the local
+    // origin, and each normals[i] is the OUTWARD unit normal of the edge from
+    // vertices[i] to vertices[i+1]. makePolygon enforces all of that, so the SAT
+    // code in collision.js can rely on it.
+    
+    const Vec2 = require('./vec2.js');
+    
+    function makeCircle(radius) {
+      return { type: 'circle', radius };
+    }
+    
+    // vertices: array of {x, y} in local space, any winding. Returns a polygon with
+    // CCW winding, centroid-relative vertices, and outward edge normals.
+    function makePolygon(vertices) {
+      let verts = vertices.map(v => ({ x: v.x, y: v.y }));
+    
+      // Enforce CCW winding (signed area > 0). Screen space is often y-down, which
+      // visually mirrors winding — don't eyeball it, let the signed area decide.
+      let signedArea = 0;
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i], b = verts[(i + 1) % verts.length];
+        signedArea += Vec2.cross(a, b);
+      }
+      if (signedArea < 0) verts.reverse();
+    
+      const normals = [];
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i], b = verts[(i + 1) % verts.length];
+        const edge = Vec2.sub(b, a);
+        // CCW winding → outward normal is the right-hand perpendicular (e.y, -e.x).
+        normals.push(Vec2.normalize({ x: edge.y, y: -edge.x }));
+      }
+      return { type: 'polygon', vertices: verts, normals };
+    }
+    
+    // Axis-aligned box of full width w and height h, centered on the body origin.
+    function makeBox(w, h) {
+      const hw = w / 2, hh = h / 2;
+      return makePolygon([
+        { x: -hw, y: -hh }, { x: hw, y: -hh },
+        { x: hw, y: hh }, { x: -hw, y: hh },
+      ]);
+    }
+    
+    // Returns { mass, inertia } about the centroid. For polygons this also
+    // RECENTERS the shape's vertices so the centroid sits at the local origin —
+    // otherwise the body would spin about the wrong point. Call once at body
+    // creation; a static body ignores the numbers (it uses invMass = 0).
+    function computeMass(shape, density) {
+      if (shape.type === 'circle') {
+        const mass = density * Math.PI * shape.radius * shape.radius;
+        // Solid disk about its center: I = ½·m·r².
+        const inertia = 0.5 * mass * shape.radius * shape.radius;
+        return { mass, inertia };
+      }
+    
+      const verts = shape.vertices;
+      const n = verts.length;
+    
+      // Pass 1: area + centroid via the fan-of-triangles integral.
+      let area = 0;
+      let centroid = { x: 0, y: 0 };
+      for (let i = 0; i < n; i++) {
+        const p1 = verts[i], p2 = verts[(i + 1) % n];
+        const cross = Vec2.cross(p1, p2);       // 2·(triangle area)
+        const triArea = 0.5 * cross;
+        area += triArea;
+        centroid.x += triArea * (p1.x + p2.x) / 3;
+        centroid.y += triArea * (p1.y + p2.y) / 3;
+      }
+      centroid = Vec2.scale(centroid, 1 / area);
+    
+      // Recenter vertices so the centroid is the local origin. Do this BEFORE
+      // computing inertia so the result is the centroidal moment directly (no
+      // parallel-axis correction needed afterwards).
+      for (const v of verts) { v.x -= centroid.x; v.y -= centroid.y; }
+    
+      // Pass 2: second moment about the (now centered) origin.
+      let I = 0;
+      for (let i = 0; i < n; i++) {
+        const p1 = verts[i], p2 = verts[(i + 1) % n];
+        const cross = Vec2.cross(p1, p2);
+        const intx2 = p1.x * p1.x + p1.x * p2.x + p2.x * p2.x;
+        const inty2 = p1.y * p1.y + p1.y * p2.y + p2.y * p2.y;
+        I += (0.25 / 3) * cross * (intx2 + inty2);
+      }
+    
+      const mass = density * area;
+      return { mass, inertia: density * I };
+    }
+    
+    // World-space axis-aligned bounding box, {minX, minY, maxX, maxY}. Broadphase
+    // uses this to reject pairs cheaply before the exact narrow-phase test.
+    function computeAABB(body) {
+      const s = body.shape;
+      if (s.type === 'circle') {
+        return {
+          minX: body.position.x - s.radius, minY: body.position.y - s.radius,
+          maxX: body.position.x + s.radius, maxY: body.position.y + s.radius,
+        };
+      }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const v of s.vertices) {
+        const w = Vec2.add(body.position, Vec2.rotate(v, body.angle));
+        if (w.x < minX) minX = w.x; if (w.x > maxX) maxX = w.x;
+        if (w.y < minY) minY = w.y; if (w.y > maxY) maxY = w.y;
+      }
+      return { minX, minY, maxX, maxY };
+    }
+    
+    module.exports = { makeCircle, makePolygon, makeBox, computeMass, computeAABB };
+    
+  });
+
+  define("broadphase.js", function (module, exports, require) {
+    // broadphase.js — the cheap first pass that finds which body pairs are even
+    // worth testing exactly. Pairs with references/collision-detection.md.
+    //
+    // Narrow-phase collision (SAT, clipping) is expensive; running it on all
+    // N·(N-1)/2 pairs melts down past a few hundred bodies. The broad phase uses
+    // each body's axis-aligned bounding box to reject almost all pairs in near-O(N)
+    // time, handing the narrow phase only the handful that actually overlap.
+    //
+    // This is a uniform spatial hash grid: fast, allocation-light, and a good
+    // default when bodies are roughly the same size. If your world mixes tiny and
+    // huge bodies, or is mostly empty space, a quadtree or sweep-and-prune can beat
+    // it — see the reference for when to switch.
+    
+    class SpatialHash {
+      // cellSize should be around the average body diameter. Too small and big
+      // bodies span many cells; too large and every body lands in one cell,
+      // collapsing back to O(N²).
+      constructor(cellSize = 64) {
+        this.cellSize = cellSize;
+        this.cells = new Map(); // "cx,cy" -> array of body indices
+      }
+    
+      clear() { this.cells.clear(); }
+    
+      // Insert body index i with its precomputed world AABB.
+      insert(i, aabb) {
+        const cs = this.cellSize;
+        const x0 = Math.floor(aabb.minX / cs), x1 = Math.floor(aabb.maxX / cs);
+        const y0 = Math.floor(aabb.minY / cs), y1 = Math.floor(aabb.maxY / cs);
+        for (let cx = x0; cx <= x1; cx++) {
+          for (let cy = y0; cy <= y1; cy++) {
+            const key = cx + ',' + cy;
+            let bucket = this.cells.get(key);
+            if (!bucket) { bucket = []; this.cells.set(key, bucket); }
+            bucket.push(i);
+          }
+        }
+      }
+    
+      // Returns deduped candidate pairs [i, j] with i < j. A pair sharing several
+      // cells would otherwise be emitted once per shared cell, so we filter through
+      // a Set — with i < j the key is order-independent.
+      queryPairs() {
+        const pairs = [];
+        const seen = new Set();
+        for (const bucket of this.cells.values()) {
+          const n = bucket.length;
+          for (let a = 0; a < n; a++) {
+            for (let b = a + 1; b < n; b++) {
+              let i = bucket[a], j = bucket[b];
+              if (i > j) { const t = i; i = j; j = t; }
+              const key = i * 100000 + j; // fine for < 100k bodies
+              if (seen.has(key)) continue;
+              seen.add(key);
+              pairs.push([i, j]);
+            }
+          }
+        }
+        return pairs;
+      }
+    }
+    
+    // Convenience: rebuild the grid from bodies carrying a `.aabb` and return the
+    // candidate pairs in one call.
+    function computePairs(bodies, cellSize = 64) {
+      const grid = new SpatialHash(cellSize);
+      for (let i = 0; i < bodies.length; i++) grid.insert(i, bodies[i].aabb);
+      return grid.queryPairs();
+    }
+    
+    module.exports = { SpatialHash, computePairs };
+    
+  });
+
+  define("body.js", function (module, exports, require) {
+    // body.js — the RigidBody: state (position/velocity/rotation), material
+    // (restitution/friction), and semi-implicit (symplectic) Euler integration.
+    // Pairs with references/foundations.md.
+    //
+    // Why semi-implicit Euler and not the "obvious" explicit Euler:
+    //   explicit:      position += velocity*dt;  velocity += accel*dt   (WRONG order)
+    //   semi-implicit: velocity += accel*dt;      position += velocity*dt (integrateForces
+    //                                                                       then integrateVelocity)
+    // The single line swap is the difference between a stable engine and one where
+    // orbits spiral out and stacks gain energy from nowhere. Explicit Euler adds
+    // energy every step; semi-implicit conserves it on average. This is THE reason
+    // step() below calls integrateForces for every body before integrateVelocity
+    // for every body — never interleaved per-body.
+    
+    const Vec2 = require('./vec2.js');
+    const { computeMass } = require('./shapes.js');
+    
+    class RigidBody {
+      // opts: { shape, position?, angle?, density?, restitution?, friction?,
+      //         isStatic?, gravityScale? }
+      constructor(opts) {
+        this.shape = opts.shape;
+        this.position = opts.position ? Vec2.clone(opts.position) : { x: 0, y: 0 };
+        this.velocity = { x: 0, y: 0 };
+        this.angle = opts.angle || 0;
+        this.angularVelocity = 0;
+    
+        // Accumulators, cleared at the end of every step.
+        this.force = { x: 0, y: 0 };
+        this.torque = 0;
+    
+        this.restitution = opts.restitution ?? 0.2;   // bounciness, 0..1
+        this.friction = opts.friction ?? 0.4;          // Coulomb coefficient
+        this.gravityScale = opts.gravityScale ?? 1;    // 0 disables gravity for this body
+    
+        // Collision filtering (see references/collision-detection.md). Two bodies
+        // collide when their category/mask bits agree BOTH ways — (a.category &
+        // b.mask) && (b.category & a.mask) — unless a non-zero group overrides it:
+        // equal positive groups always collide, equal negative groups never do.
+        // Use this for layers (player/enemy/scenery) and to exclude jointed parts.
+        this.filterCategory = opts.filterCategory ?? 0x0001;
+        this.filterMask = opts.filterMask ?? 0xFFFF;
+        this.filterGroup = opts.filterGroup ?? 0;
+        this.id = -1;                                  // assigned by World.add
+    
+        // Sleeping bookkeeping (see world.js). A sleeping body is skipped by the
+        // integrator until something wakes it.
+        this.sleeping = false;
+        this.sleepTimer = 0;
+    
+        if (opts.isStatic) {
+          this.setStatic();
+        } else {
+          const density = opts.density ?? 1;
+          const { mass, inertia } = computeMass(this.shape, density);
+          this.mass = mass; this.invMass = mass > 0 ? 1 / mass : 0;
+          this.inertia = inertia; this.invInertia = inertia > 0 ? 1 / inertia : 0;
+        }
+      }
+    
+      // Infinite mass / inertia: never translates or rotates from forces or
+      // impulses. Walls, floors, moving platforms (drive those by setting velocity
+      // directly each frame).
+      setStatic() {
+        this.mass = 0; this.invMass = 0;
+        this.inertia = 0; this.invInertia = 0;
+        this.velocity = { x: 0, y: 0 };
+        this.angularVelocity = 0;
+        return this;
+      }
+    
+      get isStatic() { return this.invMass === 0; }
+    
+      // Continuous force (gravity-like, thrust, drag). Accumulated and applied over
+      // dt during integrateForces. contact is a world point; omit it to push
+      // through the center of mass with no torque.
+      applyForce(f, contact = null) {
+        this.force.x += f.x; this.force.y += f.y;
+        if (contact) {
+          const r = Vec2.sub(contact, this.position);
+          this.torque += Vec2.cross(r, f);
+        }
+      }
+    
+      // Instantaneous change in momentum (a hit, a jump, the collision solver).
+      // r is the contact offset FROM the center of mass; {0,0} for a central hit.
+      applyImpulse(impulse, r = { x: 0, y: 0 }) {
+        this.velocity.x += this.invMass * impulse.x;
+        this.velocity.y += this.invMass * impulse.y;
+        this.angularVelocity += this.invInertia * Vec2.cross(r, impulse);
+      }
+    
+      // Step 1 of the pair: turn accumulated force + gravity into a velocity change.
+      // gravity is an ACCELERATION (independent of mass — a feather and an anvil
+      // fall at the same rate), so it is added directly, while contact/applied force
+      // is scaled by invMass.
+      integrateForces(gravity, dt) {
+        if (this.isStatic || this.sleeping) return;
+        this.velocity.x += (this.force.x * this.invMass + gravity.x * this.gravityScale) * dt;
+        this.velocity.y += (this.force.y * this.invMass + gravity.y * this.gravityScale) * dt;
+        this.angularVelocity += this.torque * this.invInertia * dt;
+      }
+    
+      // Step 2 of the pair: advance position by the (already updated) velocity.
+      integrateVelocity(dt) {
+        if (this.isStatic || this.sleeping) return;
+        this.position.x += this.velocity.x * dt;
+        this.position.y += this.velocity.y * dt;
+        this.angle += this.angularVelocity * dt;
+      }
+    
+      clearForces() { this.force.x = 0; this.force.y = 0; this.torque = 0; }
+    
+      wake() { this.sleeping = false; this.sleepTimer = 0; }
+    }
+    
+    module.exports = { RigidBody };
+    
+  });
+
+  define("collision.js", function (module, exports, require) {
+    // collision.js — narrow phase: given two bodies whose AABBs overlap, decide
+    // whether the actual shapes touch and, if so, produce a CONTACT MANIFOLD.
+    // Pairs with references/collision-detection.md.
+    //
+    // A manifold is everything the solver needs to push two bodies apart correctly:
+    //   { a, b, normal, penetration, contacts }
+    //   normal      : unit vector pointing FROM a TO b. To separate, a moves along
+    //                 -normal and b along +normal. Every function here honors that
+    //                 one convention — get it wrong and objects suck together
+    //                 instead of bouncing apart.
+    //   penetration : how deep the overlap is, along the normal (always >= 0).
+    //   contacts    : 1 point for circles / vertex hits, up to 2 for a face-on
+    //                 polygon rest (needed so a box doesn't tip on a single point).
+    //
+    // Polygon-vs-polygon uses SAT (Separating Axis Theorem) to find the axis of
+    // least penetration, then reference/incident face clipping to build the contact
+    // points. This is the classic Randy Gaul "Impulse Engine" construction.
+    
+    const Vec2 = require('./vec2.js');
+    
+    const EPS = 1e-6;
+    
+    // --- small transform helpers ---
+    const toWorld = (body, local) => Vec2.add(body.position, Vec2.rotate(local, body.angle));
+    const dirToLocal = (body, dir) => Vec2.rotate(dir, -body.angle);
+    const dirToWorld = (body, dir) => Vec2.rotate(dir, body.angle);
+    
+    // Support point: the vertex of a convex polygon furthest along `dir` (all in
+    // the polygon's local space). The workhorse of SAT.
+    function getSupport(vertices, dir) {
+      let best = -Infinity, bestV = vertices[0];
+      for (const v of vertices) {
+        const p = Vec2.dot(v, dir);
+        if (p > best) { best = p; bestV = v; }
+      }
+      return bestV;
+    }
+    
+    // ---------------------------------------------------------------------------
+    // circle vs circle
+    // ---------------------------------------------------------------------------
+    function circleVsCircle(a, b) {
+      const n = Vec2.sub(b.position, a.position);
+      const rSum = a.shape.radius + b.shape.radius;
+      const distSq = Vec2.lenSq(n);
+      if (distSq >= rSum * rSum) return null;
+    
+      const dist = Math.sqrt(distSq);
+      let normal, contact;
+      if (dist < EPS) {
+        // Exactly concentric — pick an arbitrary but consistent normal.
+        normal = { x: 1, y: 0 };
+        contact = Vec2.clone(a.position);
+        return { a, b, normal, penetration: a.shape.radius, contacts: [contact] };
+      }
+      normal = Vec2.scale(n, 1 / dist);                 // from a to b
+      contact = Vec2.addScaled(a.position, normal, a.shape.radius);
+      return { a, b, normal, penetration: rSum - dist, contacts: [contact] };
+    }
+    
+    // ---------------------------------------------------------------------------
+    // circle vs polygon — returns normal pointing from the CIRCLE to the POLYGON.
+    // ---------------------------------------------------------------------------
+    function circleVsPolygon(circle, poly) {
+      const r = circle.shape.radius;
+      const verts = poly.shape.vertices, norms = poly.shape.normals;
+      // Circle center in the polygon's local frame.
+      const center = dirToLocal(poly, Vec2.sub(circle.position, poly.position));
+    
+      // Face of greatest separation.
+      let separation = -Infinity, faceIndex = 0;
+      for (let i = 0; i < verts.length; i++) {
+        const s = Vec2.dot(norms[i], Vec2.sub(center, verts[i]));
+        if (s > r) return null;            // circle entirely outside this face
+        if (s > separation) { separation = s; faceIndex = i; }
+      }
+    
+      const v1 = verts[faceIndex];
+      const v2 = verts[(faceIndex + 1) % verts.length];
+    
+      // Center inside the polygon: push straight out along the deepest face normal.
+      if (separation < EPS) {
+        const polyToCircle = dirToWorld(poly, norms[faceIndex]); // outward from poly
+        return {
+          a: circle, b: poly,
+          normal: Vec2.neg(polyToCircle),      // circle -> poly
+          penetration: r - separation,
+          contacts: [Vec2.clone(circle.position)],
+        };
+      }
+    
+      // Center outside: which Voronoi region of the closest face?
+      const dot1 = Vec2.dot(Vec2.sub(center, v1), Vec2.sub(v2, v1));
+      const dot2 = Vec2.dot(Vec2.sub(center, v2), Vec2.sub(v1, v2));
+      const penetration = r - separation;
+      let nLocal, contactLocal;
+    
+      if (dot1 <= 0) {                        // nearest to corner v1
+        if (Vec2.distSq(center, v1) > r * r) return null;
+        nLocal = Vec2.normalize(Vec2.sub(center, v1));
+        contactLocal = v1;
+      } else if (dot2 <= 0) {                 // nearest to corner v2
+        if (Vec2.distSq(center, v2) > r * r) return null;
+        nLocal = Vec2.normalize(Vec2.sub(center, v2));
+        contactLocal = v2;
+      } else {                               // nearest to the face interior
+        nLocal = norms[faceIndex];
+        contactLocal = Vec2.addScaled(center, nLocal, -r);
+      }
+    
+      const polyToCircle = dirToWorld(poly, nLocal); // outward from poly toward circle
+      return {
+        a: circle, b: poly,
+        normal: Vec2.neg(polyToCircle),      // circle -> poly
+        penetration,
+        contacts: [toWorld(poly, contactLocal)],
+      };
+    }
+    
+    // ---------------------------------------------------------------------------
+    // polygon vs polygon — SAT + face clipping
+    // ---------------------------------------------------------------------------
+    
+    // Greatest separation of B beyond any face of A, with the responsible face.
+    // Returned separation < 0 means the shapes overlap on every one of A's axes.
+    function findAxisLeastPenetration(A, B) {
+      let best = -Infinity, bestIndex = 0;
+      const vertsA = A.shape.vertices, normsA = A.shape.normals;
+      for (let i = 0; i < vertsA.length; i++) {
+        // Face normal of A, expressed in B's local frame.
+        const nWorld = dirToWorld(A, normsA[i]);
+        const nB = dirToLocal(B, nWorld);
+        // Support point of B in the direction opposing that face.
+        const s = getSupport(B.shape.vertices, Vec2.neg(nB));
+        // The face vertex of A, moved into B's local frame.
+        let v = toWorld(A, vertsA[i]);
+        v = dirToLocal(B, Vec2.sub(v, B.position));
+        const d = Vec2.dot(nB, Vec2.sub(s, v));
+        if (d > best) { best = d; bestIndex = i; }
+      }
+      return { separation: best, faceIndex: bestIndex };
+    }
+    
+    // The face of the incident polygon most anti-parallel to the reference normal —
+    // this is the face that gets clipped against the reference face's side planes.
+    function findIncidentFace(refPoly, incPoly, refIndex) {
+      const refNormalWorld = dirToWorld(refPoly, refPoly.shape.normals[refIndex]);
+      const refNormalInc = dirToLocal(incPoly, refNormalWorld);
+      let minDot = Infinity, incIndex = 0;
+      const norms = incPoly.shape.normals;
+      for (let i = 0; i < norms.length; i++) {
+        const d = Vec2.dot(refNormalInc, norms[i]);
+        if (d < minDot) { minDot = d; incIndex = i; }
+      }
+      const verts = incPoly.shape.vertices;
+      return [
+        toWorld(incPoly, verts[incIndex]),
+        toWorld(incPoly, verts[(incIndex + 1) % verts.length]),
+      ];
+    }
+    
+    // Clip the segment `face` to the half-plane dot(n, p) <= c. Returns how many of
+    // the (up to 2) output points lie behind the plane.
+    function clip(n, c, face) {
+      const out = [face[0], face[1]];
+      let sp = 0;
+      const d1 = Vec2.dot(n, face[0]) - c;
+      const d2 = Vec2.dot(n, face[1]) - c;
+      if (d1 <= 0) out[sp++] = face[0];
+      if (d2 <= 0) out[sp++] = face[1];
+      if (d1 * d2 < 0) {                     // endpoints straddle the plane
+        const alpha = d1 / (d1 - d2);
+        out[sp++] = Vec2.addScaled(face[0], Vec2.sub(face[1], face[0]), alpha);
+      }
+      face[0] = out[0];
+      face[1] = out[1];
+      return sp;
+    }
+    
+    // Prefer keeping A's face as the reference face unless B's penetration is
+    // meaningfully larger — the bias stops the reference face from flickering
+    // between A and B on near-ties, which would make resting stacks jitter.
+    function biasGreaterThan(a, b) {
+      const REL = 0.95, ABS = 0.01;
+      return a >= b * REL + a * ABS;
+    }
+    
+    function polygonVsPolygon(a, b) {
+      const penA = findAxisLeastPenetration(a, b);
+      if (penA.separation >= 0) return null;
+      const penB = findAxisLeastPenetration(b, a);
+      if (penB.separation >= 0) return null;
+    
+      let refPoly, incPoly, refIndex, flip;
+      if (biasGreaterThan(penA.separation, penB.separation)) {
+        refPoly = a; incPoly = b; refIndex = penA.faceIndex; flip = false;
+      } else {
+        refPoly = b; incPoly = a; refIndex = penB.faceIndex; flip = true;
+      }
+    
+      const incidentFace = findIncidentFace(refPoly, incPoly, refIndex);
+    
+      // Reference face endpoints in world space.
+      const verts = refPoly.shape.vertices;
+      const v1 = toWorld(refPoly, verts[refIndex]);
+      const v2 = toWorld(refPoly, verts[(refIndex + 1) % verts.length]);
+    
+      const sidePlane = Vec2.normalize(Vec2.sub(v2, v1));     // along the face
+      const refFaceNormal = { x: sidePlane.y, y: -sidePlane.x }; // outward from refPoly
+    
+      const refC = Vec2.dot(refFaceNormal, v1);
+      const negSide = -Vec2.dot(sidePlane, v1);
+      const posSide = Vec2.dot(sidePlane, v2);
+    
+      // Clip the incident face to the two side planes of the reference face.
+      if (clip(Vec2.neg(sidePlane), negSide, incidentFace) < 2) return null;
+      if (clip(sidePlane, posSide, incidentFace) < 2) return null;
+    
+      // normal always points from a to b.
+      const normal = flip ? Vec2.neg(refFaceNormal) : refFaceNormal;
+    
+      // Keep only clipped points that sit behind the reference face; average their
+      // depth for the manifold penetration.
+      const contacts = [];
+      let penetration = 0;
+      for (const p of incidentFace) {
+        const sep = Vec2.dot(refFaceNormal, p) - refC;
+        if (sep <= 0) { contacts.push(p); penetration += -sep; }
+      }
+      if (contacts.length === 0) return null;
+      penetration /= contacts.length;
+    
+      return { a, b, normal, penetration, contacts };
+    }
+    
+    // Dispatcher: returns a manifold (normal pointing a -> b) or null.
+    function collide(a, b) {
+      const ta = a.shape.type, tb = b.shape.type;
+      if (ta === 'circle' && tb === 'circle') return circleVsCircle(a, b);
+      if (ta === 'circle' && tb === 'polygon') return circleVsPolygon(a, b);
+      if (ta === 'polygon' && tb === 'circle') {
+        const m = circleVsPolygon(b, a);     // normal from circle(b) to poly(a) = b -> a
+        if (m) { m.normal = Vec2.neg(m.normal); m.a = a; m.b = b; } // flip back to a -> b
+        return m;
+      }
+      if (ta === 'polygon' && tb === 'polygon') return polygonVsPolygon(a, b);
+      return null;
+    }
+    
+    module.exports = { collide, circleVsCircle, circleVsPolygon, polygonVsPolygon, getSupport };
+    
+  });
+
+  define("solver.js", function (module, exports, require) {
+    // solver.js — turns a contact manifold into the impulses that make bodies
+    // bounce, slide, and rest correctly. Pairs with references/collision-response.md.
+    //
+    // This is a SEQUENTIAL-IMPULSE solver with accumulated-impulse clamping (the
+    // Erin Catto / Box2D-lite method). The key idea that separates it from a naive
+    // "compute impulse, apply it" loop: each contact remembers the TOTAL normal
+    // impulse applied so far this step, and every iteration only adjusts that
+    // total — clamped so the accumulated normal impulse can never go negative
+    // (contacts can push, never pull). This converges in a handful of iterations
+    // where the naive method needs dozens, which is exactly what lets a resting
+    // stack reach true zero velocity and fall asleep instead of buzzing forever.
+    //
+    // Three entry points, run at different times by world.step():
+    //   prepare()          once per manifold, before the iteration loop.
+    //   solveVelocity()    velocityIterations times — the sequential impulse pass.
+    //   correctPositions() once, after integration — split-impulse position fix so
+    //                      residual overlap never leaks into real velocity.
+    
+    const Vec2 = require('./vec2.js');
+    
+    const EPS = 1e-6;
+    
+    // Relative velocity of b w.r.t. a AT the contact, including each body's spin
+    // contribution (ω × r).
+    function relativeVelocity(a, b, ra, rb) {
+      const va = Vec2.add(a.velocity, Vec2.crossSV(a.angularVelocity, ra));
+      const vb = Vec2.add(b.velocity, Vec2.crossSV(b.angularVelocity, rb));
+      return Vec2.sub(vb, va);
+    }
+    
+    // Precompute, per contact point: the effective mass along the normal and
+    // tangent, and the restitution target velocity. Restitution is only applied
+    // when the closing speed is above restThreshold — below it (a body settling
+    // under gravity) bounce is suppressed so stacks don't jitter.
+    function prepare(m, gravity, dt, restThreshold = 1.0) {
+      const { a, b, normal } = m;
+      m.e = Math.min(a.restitution, b.restitution);
+      m.sf = Math.sqrt(a.friction * b.friction);        // combined friction
+      m.tangent = { x: normal.y, y: -normal.x };
+      m.points = [];
+    
+      for (const point of m.contacts) {
+        const ra = Vec2.sub(point, a.position);
+        const rb = Vec2.sub(point, b.position);
+    
+        const rnA = Vec2.cross(ra, normal), rnB = Vec2.cross(rb, normal);
+        const kn = a.invMass + b.invMass + a.invInertia * rnA * rnA + b.invInertia * rnB * rnB;
+    
+        const rtA = Vec2.cross(ra, m.tangent), rtB = Vec2.cross(rb, m.tangent);
+        const kt = a.invMass + b.invMass + a.invInertia * rtA * rtA + b.invInertia * rtB * rtB;
+    
+        const rv = relativeVelocity(a, b, ra, rb);
+        const vn = Vec2.dot(rv, normal);                 // <0 while approaching
+        const restBias = (-vn > restThreshold) ? m.e * -vn : 0;
+    
+        m.points.push({
+          ra, rb,
+          massNormal: kn > EPS ? 1 / kn : 0,
+          massTangent: kt > EPS ? 1 / kt : 0,
+          restBias,
+          Pn: 0, Pt: 0,                                  // accumulated impulses
+        });
+      }
+    }
+    
+    // One sequential-impulse pass. Call velocityIterations times per step.
+    function solveVelocity(m) {
+      const { a, b, normal, tangent, sf } = m;
+    
+      for (const c of m.points) {
+        // --- normal ---
+        let rv = relativeVelocity(a, b, c.ra, c.rb);
+        const vn = Vec2.dot(rv, normal);
+        let dPn = c.massNormal * (-vn + c.restBias);
+        // Clamp the ACCUMULATED normal impulse to >= 0, then apply only the delta.
+        const Pn0 = c.Pn;
+        c.Pn = Math.max(Pn0 + dPn, 0);
+        dPn = c.Pn - Pn0;
+        const Pn = Vec2.scale(normal, dPn);
+        a.applyImpulse(Vec2.neg(Pn), c.ra);
+        b.applyImpulse(Pn, c.rb);
+    
+        // --- friction ---
+        rv = relativeVelocity(a, b, c.ra, c.rb);
+        const vt = Vec2.dot(rv, tangent);
+        let dPt = c.massTangent * -vt;
+        // Coulomb cone: |accumulated tangent impulse| <= μ · accumulated normal.
+        const maxPt = sf * c.Pn;
+        const Pt0 = c.Pt;
+        c.Pt = Math.max(-maxPt, Math.min(Pt0 + dPt, maxPt));
+        dPt = c.Pt - Pt0;
+        const Pt = Vec2.scale(tangent, dPt);
+        a.applyImpulse(Vec2.neg(Pt), c.ra);
+        b.applyImpulse(Pt, c.rb);
+      }
+    }
+    
+    // Split-impulse position correction. The velocity solve targets zero velocity,
+    // NOT zero penetration, so a little overlap survives every step. This nudges it
+    // out geometrically (touching position only, never velocity) so gravity can't
+    // feed the overlap back and sink a stack. SLOP lets bodies rest fractionally
+    // overlapped without twitching; percent under-corrects to avoid overshoot.
+    function correctPositions(m, slop = 0.05, percent = 0.4) {
+      const invSum = m.a.invMass + m.b.invMass;
+      if (invSum < EPS) return;
+      const mag = Math.max(m.penetration - slop, 0) / invSum * percent;
+      const correction = Vec2.scale(m.normal, mag);
+      m.a.position = Vec2.addScaled(m.a.position, correction, -m.a.invMass);
+      m.b.position = Vec2.addScaled(m.b.position, correction, m.b.invMass);
+    }
+    
+    module.exports = { prepare, solveVelocity, correctPositions, relativeVelocity };
+    
+  });
+
+  define("constraints.js", function (module, exports, require) {
+    // constraints.js — joints that tie bodies together: rigid rods, pins, and
+    // springs. Pairs with references/constraints-and-joints.md.
+    //
+    // A joint is just another velocity constraint solved in the same iteration loop
+    // as contacts (world.step calls joint.prepare then joint.solveVelocity). The
+    // only genuinely different one is the SpringJoint, which is a soft force rather
+    // than a hard constraint, so it feeds the force accumulator before integration
+    // instead of solving a velocity constraint.
+    //
+    // Anchors are LOCAL points on each body (so they rotate with the body). Use
+    // {x:0,y:0} to attach at the center of mass. To pin a body to a fixed point in
+    // the world, make one side a static body whose position is that point.
+    
+    const Vec2 = require('./vec2.js');
+    
+    const EPS = 1e-6;
+    
+    // Rigid rod OR fixed-distance link: keeps the two anchors exactly `length`
+    // apart (can both push and pull, unlike a contact which only pushes). Omit
+    // `length` to lock in the current separation.
+    class DistanceJoint {
+      constructor(a, b, anchorA = { x: 0, y: 0 }, anchorB = { x: 0, y: 0 }, opts = {}) {
+        this.a = a; this.b = b;
+        this.localA = Vec2.clone(anchorA);
+        this.localB = Vec2.clone(anchorB);
+        this.beta = opts.beta ?? 0.2;         // position-correction stiffness
+        this.collideConnected = opts.collideConnected ?? false;
+        if (opts.length != null) {
+          this.length = opts.length;
+        } else {
+          const pA = Vec2.add(a.position, Vec2.rotate(this.localA, a.angle));
+          const pB = Vec2.add(b.position, Vec2.rotate(this.localB, b.angle));
+          this.length = Vec2.dist(pA, pB);
+        }
+      }
+    
+      prepare(dt) {
+        const { a, b } = this;
+        this.rA = Vec2.rotate(this.localA, a.angle);
+        this.rB = Vec2.rotate(this.localB, b.angle);
+        const pA = Vec2.add(a.position, this.rA);
+        const pB = Vec2.add(b.position, this.rB);
+        const d = Vec2.sub(pB, pA);
+        const len = Vec2.len(d);
+        this.u = len > EPS ? Vec2.scale(d, 1 / len) : { x: 1, y: 0 };
+    
+        const crA = Vec2.cross(this.rA, this.u), crB = Vec2.cross(this.rB, this.u);
+        const k = a.invMass + b.invMass + a.invInertia * crA * crA + b.invInertia * crB * crB;
+        this.mass = k > EPS ? 1 / k : 0;
+        this.bias = (this.beta / dt) * (len - this.length);   // pull back toward rest length
+      }
+    
+      solveVelocity() {
+        const { a, b, u, rA, rB } = this;
+        const vpA = Vec2.add(a.velocity, Vec2.crossSV(a.angularVelocity, rA));
+        const vpB = Vec2.add(b.velocity, Vec2.crossSV(b.angularVelocity, rB));
+        const vrel = Vec2.dot(Vec2.sub(vpB, vpA), u);
+        const dImp = -this.mass * (vrel + this.bias);
+        const P = Vec2.scale(u, dImp);
+        a.applyImpulse(Vec2.neg(P), rA);
+        b.applyImpulse(P, rB);
+      }
+    }
+    
+    // Pin / revolute joint: forces the two anchor points to coincide while letting
+    // the bodies rotate freely about that shared point. This is a 2-DOF constraint,
+    // so it solves a 2×2 effective-mass system each iteration.
+    class RevoluteJoint {
+      constructor(a, b, anchorA = { x: 0, y: 0 }, anchorB = { x: 0, y: 0 }, opts = {}) {
+        this.a = a; this.b = b;
+        this.localA = Vec2.clone(anchorA);
+        this.localB = Vec2.clone(anchorB);
+        this.beta = opts.beta ?? 0.2;
+        this.collideConnected = opts.collideConnected ?? false;
+      }
+    
+      prepare(dt) {
+        const { a, b } = this;
+        this.rA = Vec2.rotate(this.localA, a.angle);
+        this.rB = Vec2.rotate(this.localB, b.angle);
+    
+        // Effective mass matrix K (2×2, symmetric). See the reference for the
+        // derivation; it is the point-constraint Jacobian folded with inverse mass.
+        const im = a.invMass + b.invMass;
+        const iIA = a.invInertia, iIB = b.invInertia;
+        const rA = this.rA, rB = this.rB;
+        const k11 = im + iIA * rA.y * rA.y + iIB * rB.y * rB.y;
+        const k12 = -iIA * rA.x * rA.y - iIB * rB.x * rB.y;
+        const k22 = im + iIA * rA.x * rA.x + iIB * rB.x * rB.x;
+        const det = k11 * k22 - k12 * k12;
+        const invDet = Math.abs(det) > EPS ? 1 / det : 0;
+        // Inverse of K.
+        this.invK = { a: k22 * invDet, b: -k12 * invDet, c: -k12 * invDet, d: k11 * invDet };
+    
+        // Positional error (anchor separation) fed back as a bias velocity.
+        const pA = Vec2.add(a.position, rA);
+        const pB = Vec2.add(b.position, rB);
+        const C = Vec2.sub(pB, pA);
+        this.bias = Vec2.scale(C, this.beta / dt);
+      }
+    
+      solveVelocity() {
+        const { a, b, rA, rB, invK, bias } = this;
+        const vpA = Vec2.add(a.velocity, Vec2.crossSV(a.angularVelocity, rA));
+        const vpB = Vec2.add(b.velocity, Vec2.crossSV(b.angularVelocity, rB));
+        const dv = Vec2.add(Vec2.sub(vpB, vpA), bias);
+        // impulse = -K⁻¹ · dv
+        const P = {
+          x: -(invK.a * dv.x + invK.b * dv.y),
+          y: -(invK.c * dv.x + invK.d * dv.y),
+        };
+        a.applyImpulse(Vec2.neg(P), rA);
+        b.applyImpulse(P, rB);
+      }
+    }
+    
+    // Soft spring (damped Hooke's law) between two anchors. Unlike the rigid joints
+    // this is a FORCE, not a hard constraint — it can stretch and oscillate. It
+    // feeds the force accumulator, so it runs before integration (world calls
+    // applyForces), which keeps it compatible with semi-implicit Euler.
+    class SpringJoint {
+      constructor(a, b, anchorA = { x: 0, y: 0 }, anchorB = { x: 0, y: 0 }, opts = {}) {
+        this.a = a; this.b = b;
+        this.localA = Vec2.clone(anchorA);
+        this.localB = Vec2.clone(anchorB);
+        this.stiffness = opts.stiffness ?? 50;   // N per unit stretch (k in F=-kx)
+        this.damping = opts.damping ?? 2;        // resists relative velocity
+        this.collideConnected = opts.collideConnected ?? true; // springs usually allow it
+        if (opts.restLength != null) {
+          this.restLength = opts.restLength;
+        } else {
+          const pA = Vec2.add(a.position, Vec2.rotate(this.localA, a.angle));
+          const pB = Vec2.add(b.position, Vec2.rotate(this.localB, b.angle));
+          this.restLength = Vec2.dist(pA, pB);
+        }
+      }
+    
+      applyForces() {
+        const { a, b } = this;
+        const rA = Vec2.rotate(this.localA, a.angle);
+        const rB = Vec2.rotate(this.localB, b.angle);
+        const pA = Vec2.add(a.position, rA);
+        const pB = Vec2.add(b.position, rB);
+        const d = Vec2.sub(pB, pA);
+        const len = Vec2.len(d);
+        if (len < EPS) return;
+        const u = Vec2.scale(d, 1 / len);
+    
+        // Hooke's restoring force + velocity damping along the spring axis.
+        const vpA = Vec2.add(a.velocity, Vec2.crossSV(a.angularVelocity, rA));
+        const vpB = Vec2.add(b.velocity, Vec2.crossSV(b.angularVelocity, rB));
+        const vrel = Vec2.dot(Vec2.sub(vpB, vpA), u);
+        const forceMag = -this.stiffness * (len - this.restLength) - this.damping * vrel;
+        const F = Vec2.scale(u, forceMag);
+    
+        // Equal and opposite, applied at the anchors (so it can also induce torque).
+        a.applyForce(Vec2.neg(F), pA);
+        b.applyForce(F, pB);
+      }
+    }
+    
+    module.exports = { DistanceJoint, RevoluteJoint, SpringJoint };
+    
+  });
+
+  define("raycast.js", function (module, exports, require) {
+    // raycast.js — shoot a ray into the world and find what it hits first. Pairs
+    // with references/collision-detection.md.
+    //
+    // This is the query side of collision, and games lean on it constantly:
+    // hitscan weapons, line-of-sight / AI vision checks, laser sights, mouse
+    // picking, ground sensors, and as the honest fix for bullet tunneling that
+    // adaptive substepping can't reach (cast the bullet's path each step, teleport
+    // to the hit). Returns the NEAREST hit: { body, point, normal, t } where t is
+    // the distance along the ray, or null for a miss.
+    
+    const Vec2 = require('./vec2.js');
+    
+    const EPS = 1e-9;
+    
+    // Ray (origin + t·dir, dir unit, t>=0) vs circle. Returns t of the first
+    // surface crossing or null.
+    function rayVsCircle(origin, dir, center, radius) {
+      const m = Vec2.sub(origin, center);
+      const b = Vec2.dot(m, dir);
+      const c = Vec2.dot(m, m) - radius * radius;
+      if (c > 0 && b > 0) return null;            // origin outside and pointing away
+      const disc = b * b - c;
+      if (disc < 0) return null;                  // ray misses the circle
+      let t = -b - Math.sqrt(disc);
+      if (t < 0) t = 0;                           // origin inside the circle
+      return t;
+    }
+    
+    // Ray vs one segment a→b. Returns t along the ray (and u along the segment) or
+    // null. Used to walk a convex polygon's edges.
+    function rayVsSegment(origin, dir, a, b) {
+      const e = Vec2.sub(b, a);
+      const denom = Vec2.cross(dir, e);
+      if (Math.abs(denom) < EPS) return null;     // parallel
+      const ao = Vec2.sub(a, origin);
+      const t = Vec2.cross(ao, e) / denom;
+      const u = Vec2.cross(ao, dir) / denom;
+      if (t < 0 || u < 0 || u > 1) return null;
+      return t;
+    }
+    
+    // Ray vs a body (circle or convex polygon). Returns { t, point, normal } or null.
+    function rayVsBody(origin, dir, body) {
+      if (body.shape.type === 'circle') {
+        const t = rayVsCircle(origin, dir, body.position, body.shape.radius);
+        if (t == null) return null;
+        const point = Vec2.addScaled(origin, dir, t);
+        const normal = Vec2.normalize(Vec2.sub(point, body.position));
+        return { t, point, normal };
+      }
+      // Polygon: nearest hit among the edges.
+      const verts = body.shape.vertices, norms = body.shape.normals;
+      let bestT = Infinity, bestNormal = null;
+      for (let i = 0; i < verts.length; i++) {
+        const a = Vec2.add(body.position, Vec2.rotate(verts[i], body.angle));
+        const b = Vec2.add(body.position, Vec2.rotate(verts[(i + 1) % verts.length], body.angle));
+        const t = rayVsSegment(origin, dir, a, b);
+        if (t != null && t < bestT) {
+          bestT = t;
+          bestNormal = Vec2.rotate(norms[i], body.angle);
+        }
+      }
+      if (!bestNormal) return null;
+      return { t: bestT, point: Vec2.addScaled(origin, dir, bestT), normal: bestNormal };
+    }
+    
+    // Cast a ray through every body in `bodies` and return the nearest hit, or null.
+    // `dir` need not be normalized. `maxDist` bounds the ray (default unbounded).
+    // `filter(body)` may reject bodies (e.g. skip the shooter, or a layer mask).
+    function raycast(bodies, origin, dir, maxDist = Infinity, filter = null) {
+      const d = Vec2.normalize(dir);
+      let best = null;
+      for (const body of bodies) {
+        if (filter && !filter(body)) continue;
+        const hit = rayVsBody(origin, d, body);
+        if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) {
+          best = { body, point: hit.point, normal: hit.normal, t: hit.t };
+        }
+      }
+      return best;
+    }
+    
+    module.exports = { raycast, rayVsBody, rayVsCircle, rayVsSegment };
+    
+  });
+
+  define("world.js", function (module, exports, require) {
+    // world.js — the object you actually drive. Holds the bodies, owns gravity, and
+    // runs the pipeline in the ONE order that stays stable. Pairs with all five
+    // reference files; the pipeline order is explained in foundations.md.
+    //
+    //   update(realFrameDelta)   <- call this from requestAnimationFrame
+    //     └─ fixed-timestep accumulator: runs step() zero-or-more times at a
+    //        constant dt, so the simulation is deterministic and frame-rate
+    //        independent (see "Fix Your Timestep" in foundations.md).
+    //        └─ step(dt): broadphase → narrowphase → integrate forces →
+    //                     solve velocities (N iterations) → integrate positions →
+    //                     correct positions → sleep bookkeeping.
+    //
+    // Coordinates are unit-agnostic. A canvas game usually works in pixels with
+    // y pointing DOWN, so positive gravity.y (e.g. {x:0, y:1000}) pulls things
+    // down-screen. If you prefer SI units, work in meters and multiply by a
+    // pixels-per-meter constant only at render time.
+    
+    const Vec2 = require('./vec2.js');
+    const { computeAABB } = require('./shapes.js');
+    const { computePairs } = require('./broadphase.js');
+    const { collide } = require('./collision.js');
+    const { prepare, solveVelocity, correctPositions } = require('./solver.js');
+    const { raycast } = require('./raycast.js');
+    
+    class World {
+      constructor(opts = {}) {
+        this.gravity = opts.gravity ? Vec2.clone(opts.gravity) : { x: 0, y: 9.81 };
+        this.bodies = [];
+        this.joints = [];
+    
+        this.fixedDt = opts.fixedDt ?? 1 / 60;            // simulation timestep (s)
+        this.velocityIterations = opts.velocityIterations ?? 8;
+        this.cellSize = opts.cellSize ?? 64;              // broadphase grid cell
+        this.maxSubSteps = opts.maxSubSteps ?? 5;         // spiral-of-death guard
+    
+        this.allowSleep = opts.allowSleep ?? true;
+        this.sleepLinearTol = opts.sleepLinearTol ?? 0.08;
+        this.sleepAngularTol = opts.sleepAngularTol ?? 0.05;
+        this.timeToSleep = opts.timeToSleep ?? 0.5;
+    
+        // Below this closing speed, a collision does not bounce (restitution is
+        // suppressed) so bodies settling under gravity don't jitter. Raise it if
+        // you work in large pixel units and slow bounces look dead; lower it if
+        // gentle impacts should still visibly bounce.
+        this.restitutionThreshold = opts.restitutionThreshold ?? 1.0;
+    
+        // Anti-tunneling by adaptive substepping (see stability-and-tuning.md).
+        // When a body would move more than `ccdSlop`× its own radius in one step,
+        // the step is subdivided so it can't skip over a thin wall. This is finer
+        // time resolution, not true swept CCD — good enough for the common case.
+        this.ccd = opts.ccd ?? true;
+        this.ccdSlop = opts.ccdSlop ?? 0.5;
+        this.maxCcdSubSteps = opts.maxCcdSubSteps ?? 4;
+    
+        this.accumulator = 0;
+        this._nextId = 0;
+      }
+    
+      // Filtering rule: group overrides bits. Equal non-zero groups force the
+      // outcome (positive = always collide, negative = never); otherwise the
+      // category/mask bits must agree in both directions.
+      _shouldCollide(a, b) {
+        if (a.filterGroup !== 0 && a.filterGroup === b.filterGroup) {
+          return a.filterGroup > 0;
+        }
+        return (a.filterCategory & b.filterMask) !== 0
+          && (b.filterCategory & a.filterMask) !== 0;
+      }
+    
+      add(body) {
+        if (body.id < 0) body.id = this._nextId++;
+        this.bodies.push(body);
+        return body;
+      }
+      remove(body) {
+        const i = this.bodies.indexOf(body);
+        if (i >= 0) this.bodies.splice(i, 1);
+      }
+    
+      addJoint(joint) { this.joints.push(joint); return joint; }
+      removeJoint(joint) {
+        const i = this.joints.indexOf(joint);
+        if (i >= 0) this.joints.splice(i, 1);
+      }
+    
+      // Nearest body hit by a ray from `origin` along `dir`. See raycast.js.
+      // Returns { body, point, normal, t } or null.
+      raycast(origin, dir, maxDist = Infinity, filter = null) {
+        return raycast(this.bodies, origin, dir, maxDist, filter);
+      }
+    
+      // Bounding radius (max distance centroid→surface), cached. Used by the CCD
+      // guard and cheap culling.
+      _boundingRadius(b) {
+        if (b._boundingRadius != null) return b._boundingRadius;
+        let r;
+        if (b.shape.type === 'circle') r = b.shape.radius;
+        else { r = 0; for (const v of b.shape.vertices) r = Math.max(r, Vec2.len(v)); }
+        b._boundingRadius = r;
+        return r;
+      }
+    
+      // Drive from your render loop with the REAL elapsed seconds since last call.
+      // Returns an interpolation alpha in [0,1): lerp each body between
+      // prevPosition/prevAngle and position when drawing, for smooth motion that
+      // doesn't stutter when the fixed step and the frame rate disagree.
+      update(frameTime) {
+        if (frameTime > 0.25) frameTime = 0.25;          // clamp huge stalls
+        this.accumulator += frameTime;
+        let steps = 0;
+        while (this.accumulator >= this.fixedDt && steps < this.maxSubSteps) {
+          this._fixedStep(this.fixedDt);
+          this.accumulator -= this.fixedDt;
+          steps++;
+        }
+        // Ran out of budget (tab was backgrounded, slow frame): drop the backlog
+        // instead of trying to catch up forever.
+        if (this.accumulator >= this.fixedDt) this.accumulator = 0;
+        return this.accumulator / this.fixedDt;
+      }
+    
+      // One fixed step, possibly subdivided for anti-tunneling.
+      _fixedStep(dt) {
+        // Snapshot for render interpolation.
+        for (const b of this.bodies) {
+          b.prevPosition = Vec2.clone(b.position);
+          b.prevAngle = b.angle;
+        }
+    
+        let k = 1;
+        if (this.ccd) {
+          for (const b of this.bodies) {
+            if (b.isStatic || b.sleeping) continue;
+            const travel = Vec2.len(b.velocity) * dt;
+            const limit = this.ccdSlop * this._boundingRadius(b);
+            if (limit > 0 && travel > limit) {
+              k = Math.max(k, Math.min(this.maxCcdSubSteps, Math.ceil(travel / limit)));
+            }
+          }
+        }
+        const sub = dt / k;
+        for (let s = 0; s < k; s++) this.step(sub);
+      }
+    
+      // A single simulation step. Advances every body by dt and resolves contacts.
+      step(dt) {
+        const bodies = this.bodies;
+    
+        // 1. Broadphase — refresh AABBs, get candidate pairs.
+        for (const b of bodies) b.aabb = computeAABB(b);
+        const pairs = computePairs(bodies, this.cellSize);
+    
+        // Pairs excluded because a joint connects them with collideConnected off.
+        const jointExcluded = new Set();
+        for (const jt of this.joints) {
+          if (!jt.collideConnected) {
+            const lo = Math.min(jt.a.id, jt.b.id), hi = Math.max(jt.a.id, jt.b.id);
+            jointExcluded.add(lo * 100000 + hi);
+          }
+        }
+    
+        // 2. Narrowphase — exact test, build manifolds, wake sleepers on contact.
+        const manifolds = [];
+        for (const [i, j] of pairs) {
+          const A = bodies[i], B = bodies[j];
+          if (A.isStatic && B.isStatic) continue;
+          if (A.sleeping && B.sleeping) continue;
+          if (!this._shouldCollide(A, B)) continue;
+          const lo = Math.min(A.id, B.id), hi = Math.max(A.id, B.id);
+          if (jointExcluded.has(lo * 100000 + hi)) continue;
+          const m = collide(A, B);
+          if (!m) continue;
+          // A moving body touching a sleeper wakes it.
+          if (A.sleeping && !B.sleeping && !B.isStatic) A.wake();
+          if (B.sleeping && !A.sleeping && !A.isStatic) B.wake();
+          manifolds.push(m);
+        }
+    
+        // Jointed bodies stay awake — a joint can keep feeding energy (a swinging
+        // pendulum, a driven spring), so it must not be frozen by the sleep system.
+        for (const j of this.joints) {
+          if (!j.a.isStatic) j.a.wake();
+          if (!j.b.isStatic) j.b.wake();
+        }
+    
+        // 3. Soft forces (springs) feed the accumulator, then integrate forces
+        //    (velocity update) — semi-implicit Euler, step 1.
+        for (const j of this.joints) if (j.applyForces) j.applyForces(dt);
+        for (const b of bodies) b.integrateForces(this.gravity, dt);
+    
+        // 4. Prepare + 5. solve velocities (sequential impulses). Joints and
+        //    contacts share the same iteration loop; joints solved first each pass.
+        for (const m of manifolds) prepare(m, this.gravity, dt, this.restitutionThreshold);
+        for (const j of this.joints) if (j.prepare) j.prepare(dt);
+        for (let it = 0; it < this.velocityIterations; it++) {
+          for (const j of this.joints) if (j.solveVelocity) j.solveVelocity();
+          for (const m of manifolds) solveVelocity(m);
+        }
+    
+        // 6. Integrate velocities (position update) — semi-implicit Euler, step 2.
+        for (const b of bodies) b.integrateVelocity(dt);
+    
+        // 7. Positional correction — push out residual overlap.
+        for (const m of manifolds) correctPositions(m);
+    
+        // 8. Clear force accumulators for next step.
+        for (const b of bodies) b.clearForces();
+    
+        // 9. Sleeping bookkeeping.
+        if (this.allowSleep) this._updateSleeping(dt);
+      }
+    
+      _updateSleeping(dt) {
+        const linTolSq = this.sleepLinearTol * this.sleepLinearTol;
+        for (const b of this.bodies) {
+          if (b.isStatic) continue;
+          const still = Vec2.lenSq(b.velocity) < linTolSq
+            && Math.abs(b.angularVelocity) < this.sleepAngularTol;
+          if (!still) {
+            b.sleepTimer = 0;
+            b.sleeping = false;
+          } else if (!b.sleeping) {
+            b.sleepTimer += dt;
+            if (b.sleepTimer >= this.timeToSleep) {
+              b.sleeping = true;
+              b.velocity.x = 0; b.velocity.y = 0; b.angularVelocity = 0;
+            }
+          }
+        }
+      }
+    }
+    
+    module.exports = { World };
+    
+  });
+
+  define("index.js", function (module, exports, require) {
+    // index.js — one import for the whole engine.
+    //
+    //   const P = require('./scripts/index.js');
+    //   const world = new P.World({ gravity: { x: 0, y: 900 } });
+    //   const ball = world.add(new P.RigidBody({ shape: P.makeCircle(20), position: { x: 100, y: 0 } }));
+    //   world.add(new P.RigidBody({ shape: P.makeBox(800, 40), position: { x: 400, y: 580 }, isStatic: true }));
+    //   // in your requestAnimationFrame loop, with dt in seconds:
+    //   world.update(dt);
+    //
+    // For browser/ESM use, re-export these with `export` or load via a bundler;
+    // the modules use CommonJS so they also run under Node for testing.
+    
+    const Vec2 = require('./vec2.js');
+    const shapes = require('./shapes.js');
+    const { RigidBody } = require('./body.js');
+    const broadphase = require('./broadphase.js');
+    const collision = require('./collision.js');
+    const solver = require('./solver.js');
+    const constraints = require('./constraints.js');
+    const raycast = require('./raycast.js');
+    const { World } = require('./world.js');
+    
+    module.exports = {
+      Vec2,
+      RigidBody,
+      World,
+      // shape constructors + mass helpers
+      makeCircle: shapes.makeCircle,
+      makeBox: shapes.makeBox,
+      makePolygon: shapes.makePolygon,
+      computeMass: shapes.computeMass,
+      computeAABB: shapes.computeAABB,
+      // joints
+      DistanceJoint: constraints.DistanceJoint,
+      RevoluteJoint: constraints.RevoluteJoint,
+      SpringJoint: constraints.SpringJoint,
+      // queries + lower-level pieces (for custom pipelines)
+      raycast: raycast.raycast,
+      rayVsBody: raycast.rayVsBody,
+      collide: collision.collide,
+      broadphase,
+      solver,
+    };
+    
+  });
+
+  window.PhysicsEngine = __require('index.js');
+})();
+
+</script>
+<script>
+// app.js — demo harness for skills/physics-2d. Pure scenario-building
+// functions (buildBounce, buildStack, buildJoints, buildRaycast,
+// buildPlayground) touch only P/W/H — no DOM — so they can be sanity-checked
+// headlessly under Node before ever opening a browser.
+
+const P = window.PhysicsEngine;
+const W = 900, H = 560;
+const GRAVITY = { x: 0, y: 1000 };
+// Pixel-scale gravity means a resting body still gains ~17 px/s of downward
+// velocity every single frame before the contact solver runs. The engine's
+// default restitutionThreshold (1.0) is tuned for small/SI-ish units, so at
+// this scale it would treat that per-frame gravity kick as a "real" impact
+// and keep re-bouncing forever — settling that buzzes instead of sleeping.
+// Raising the threshold above the per-frame kick (see references/stability-
+// and-tuning.md) is what lets resting contacts actually go quiet.
+// velocityIterations raised from the default 8: at this force scale a 3-tall
+// box stack needs the extra convergence headroom to stay upright instead of
+// slowly leaning (see references/stability-and-tuning.md's "Stacks squishy /
+// sink -> more velocityIterations"). Confirmed by testing: default 8 let a
+// stack topple outright at this gravity magnitude; 16 holds it to a
+// sub-degree, non-growing wobble over several minutes of simulated time.
+const WORLD_OPTS = { gravity: GRAVITY, restitutionThreshold: 40, velocityIterations: 16 };
+
+function addBoundary(world, P, W, H) {
+  const floor = world.add(new P.RigidBody({ shape: P.makeBox(W - 20, 40), position: { x: W / 2, y: H - 20 }, isStatic: true, friction: 0.7 }));
+  floor.color = '#334155';
+  const left = world.add(new P.RigidBody({ shape: P.makeBox(20, H), position: { x: 10, y: H / 2 }, isStatic: true }));
+  left.color = '#334155';
+  const right = world.add(new P.RigidBody({ shape: P.makeBox(20, H), position: { x: W - 10, y: H / 2 }, isStatic: true }));
+  right.color = '#334155';
+}
+
+function buildBounce(P, W, H) {
+  const world = new P.World(WORLD_OPTS);
+  addBoundary(world, P, W, H);
+
+  const restitutions = [0.9, 0.65, 0.4, 0.15];
+  const colors = ['#f87171', '#fb923c', '#facc15', '#a3e635'];
+  restitutions.forEach((r, i) => {
+    const b = world.add(new P.RigidBody({ shape: P.makeCircle(22), position: { x: 560 + i * 80, y: 60 + i * 20 }, restitution: r, friction: 0.3 }));
+    b.color = colors[i];
+  });
+
+  const ramp1 = world.add(new P.RigidBody({ shape: P.makeBox(240, 20), position: { x: 150, y: 200 }, angle: 0.5, isStatic: true }));
+  ramp1.color = '#334155';
+  const ramp2 = world.add(new P.RigidBody({ shape: P.makeBox(240, 20), position: { x: 150, y: 360 }, angle: 0.5, isStatic: true }));
+  ramp2.color = '#334155';
+
+  const lowF = world.add(new P.RigidBody({ shape: P.makeBox(32, 32), position: { x: 150, y: 120 }, angle: 0.5, friction: 0.05, restitution: 0.05 }));
+  lowF.color = '#38bdf8';
+  const hiF = world.add(new P.RigidBody({ shape: P.makeBox(32, 32), position: { x: 150, y: 280 }, angle: 0.5, friction: 1.1, restitution: 0.05 }));
+  hiF.color = '#c084fc';
+
+  return { world };
+}
+
+function buildStack(P, W, H) {
+  const world = new P.World(WORLD_OPTS);
+  addBoundary(world, P, W, H);
+
+  // 3-tall columns — matches the height the engine's own selftest validates.
+  // A taller stack (5+) at this gravity scale was tested and found to
+  // slowly lean or fully topple even with raised iterations; 3 stays put.
+  const s = 40;
+  const colors = ['#38bdf8', '#818cf8', '#f472b6'];
+  for (let col = 0; col < 3; col++) {
+    const cx = W / 2 - 180 + col * 180;
+    for (let k = 0; k < 3; k++) {
+      const b = world.add(new P.RigidBody({
+        shape: P.makeBox(s, s),
+        position: { x: cx, y: H - 40 - k * (s + 1) - s / 2 },
+        friction: 0.6, restitution: 0.05,
+      }));
+      b.color = colors[k % colors.length];
+    }
+  }
+
+  // Circles dropped in the gaps between columns, not onto them, so this
+  // scenario tests circle-vs-floor resting independently of the stacks.
+  const circleXs = [90, 170, 360, 540, 800];
+  circleXs.forEach((x, i) => {
+    const c = world.add(new P.RigidBody({ shape: P.makeCircle(15), position: { x, y: 30 + (i % 2) * 30 }, restitution: 0.3, friction: 0.5 }));
+    c.color = '#34d399';
+  });
+
+  return { world };
+}
+
+function buildJoints(P, W, H) {
+  const world = new P.World(WORLD_OPTS);
+  addBoundary(world, P, W, H);
+
+  // Rod / pendulum — released horizontal so it swings.
+  const pivot1 = world.add(new P.RigidBody({ shape: P.makeCircle(6), position: { x: 170, y: 70 }, isStatic: true }));
+  pivot1.color = '#94a3b8';
+  const bob = world.add(new P.RigidBody({ shape: P.makeCircle(24), position: { x: 330, y: 70 }, restitution: 0.3, friction: 0.4 }));
+  bob.color = '#38bdf8';
+  world.addJoint(new P.DistanceJoint(pivot1, bob, { x: 0, y: 0 }, { x: 0, y: 0 }, { length: 160 }));
+
+  // Pin / revolute — a hinged plank that swings down and settles.
+  const pivot2 = world.add(new P.RigidBody({ shape: P.makeCircle(6), position: { x: 500, y: 70 }, isStatic: true }));
+  pivot2.color = '#94a3b8';
+  const arm = world.add(new P.RigidBody({ shape: P.makeBox(140, 18), position: { x: 570, y: 70 }, friction: 0.3, restitution: 0.2 }));
+  arm.color = '#a3e635';
+  world.addJoint(new P.RevoluteJoint(pivot2, arm, { x: 0, y: 0 }, { x: -70, y: 0 }));
+
+  // Spring — soft, bouncy, settles to an analytic equilibrium.
+  const anchor3 = world.add(new P.RigidBody({ shape: P.makeCircle(6), position: { x: 760, y: 60 }, isStatic: true }));
+  anchor3.color = '#94a3b8';
+  const weight = world.add(new P.RigidBody({ shape: P.makeBox(30, 30), position: { x: 760, y: 150 }, friction: 0.3, restitution: 0.1 }));
+  weight.color = '#fb923c';
+  world.addJoint(new P.SpringJoint(anchor3, weight, { x: 0, y: 0 }, { x: 0, y: 0 }, { stiffness: 13000, damping: 900, restLength: 90 }));
+
+  return { world };
+}
+
+function buildRaycast(P, W, H) {
+  const world = new P.World(WORLD_OPTS);
+  addBoundary(world, P, W, H);
+  const turret = { x: W / 2, y: H - 40 };
+
+  const shapes = [
+    { shape: P.makeCircle(26), position: { x: 180, y: 180 } },
+    { shape: P.makeBox(60, 60), position: { x: 340, y: 140 }, angle: 0.3 },
+    { shape: P.makeCircle(20), position: { x: 520, y: 220 } },
+    { shape: P.makeBox(50, 90), position: { x: 680, y: 160 }, angle: -0.2 },
+    { shape: P.makeCircle(30), position: { x: 800, y: 260 } },
+    { shape: P.makeBox(70, 40), position: { x: 260, y: 320 }, angle: 0.6 },
+  ];
+  const colors = ['#f87171', '#fb923c', '#facc15', '#a3e635', '#38bdf8', '#c084fc'];
+  shapes.forEach((s, i) => {
+    const b = world.add(new P.RigidBody({ shape: s.shape, position: s.position, angle: s.angle || 0, restitution: 0.35, friction: 0.4 }));
+    b.color = colors[i];
+  });
+
+  return { world, turret };
+}
+
+function buildPlayground(P, W, H) {
+  const world = new P.World(WORLD_OPTS);
+  addBoundary(world, P, W, H);
+  const platform = world.add(new P.RigidBody({ shape: P.makeBox(220, 20), position: { x: W / 2, y: H / 2 + 60 }, angle: -0.15, isStatic: true }));
+  platform.color = '#334155';
+  return { world };
+}
+
+const SCENARIOS = {
+  bounce: { label: 'Bounce & Friction', hint: 'Balls with different restitution fall on the right. Matched boxes with low vs. high friction slide down twin ramps on the left.', build: buildBounce },
+  stack: { label: 'Stacking & Sleep', hint: 'Three box columns stay upright under gravity instead of sinking or toppling. Circles in the gaps settle and dim once asleep.', build: buildStack },
+  joints: { label: 'Joints', hint: 'A rod (pendulum), a pin (hinged plank) and a spring — all solved in the same iteration loop as contacts.', build: buildJoints },
+  raycast: { label: 'Raycast', hint: 'Move the mouse to aim from the turret. Click to fire a ray — a hit knocks the body back along the ray.', build: buildRaycast },
+  playground: { label: 'Playground', hint: 'Click anywhere to drop a random circle or box.', build: buildPlayground },
+};
+
+// ---- everything below this line touches the DOM ----
+if (typeof document !== 'undefined') {
+  const canvas = document.getElementById('c');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  let scenarioKey = 'bounce';
+  let world, meta = {};
+  let impactFlashes = [];
+  const mouse = { x: W / 2, y: H / 2 };
+
+  function loadScenario(key) {
+    scenarioKey = key;
+    const built = SCENARIOS[key].build(P, W, H);
+    world = built.world;
+    meta = built;
+    impactFlashes = [];
+    document.getElementById('hint').textContent = SCENARIOS[key].hint;
+    document.querySelectorAll('.tab').forEach(btn => btn.classList.toggle('active', btn.dataset.key === key));
+    canvas.classList.toggle('aim', key === 'raycast');
+    canvas.classList.toggle('drop', key === 'playground');
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpVec(a, b, t) { return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) }; }
+
+  function shade(hex, amt) {
+    const num = parseInt(hex.slice(1), 16);
+    let r = (num >> 16) + amt, g = ((num >> 8) & 0xff) + amt, b = (num & 0xff) + amt;
+    r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+    return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+  }
+
+  function drawGrid() {
+    ctx.strokeStyle = 'rgba(148,163,184,0.06)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  }
+
+  function drawBody(b, alpha) {
+    const prevPos = b.prevPosition || b.position;
+    const prevAngle = b.prevAngle != null ? b.prevAngle : b.angle;
+    const pos = lerpVec(prevPos, b.position, alpha);
+    const angle = lerp(prevAngle, b.angle, alpha);
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(angle);
+    let fill = b.color || '#38bdf8';
+    if (b.isStatic) fill = '#334155';
+    else if (b.sleeping) fill = shade(b.color || '#38bdf8', -70);
+    ctx.fillStyle = fill;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = b.isStatic ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.25)';
+    if (b.shape.type === 'circle') {
+      ctx.beginPath(); ctx.arc(0, 0, b.shape.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(b.shape.radius * 0.9, 0);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+    } else {
+      const v = b.shape.vertices;
+      ctx.beginPath(); ctx.moveTo(v[0].x, v[0].y);
+      for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function worldAnchor(body, local) { return P.Vec2.add(body.position, P.Vec2.rotate(local, body.angle)); }
+
+  function drawSpring(a, b) {
+    const segs = 12;
+    const d = P.Vec2.sub(b, a);
+    const len = P.Vec2.len(d) || 1;
+    const dir = P.Vec2.scale(d, 1 / len);
+    const perp = { x: -dir.y, y: dir.x };
+    ctx.beginPath(); ctx.moveTo(a.x, a.y);
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const base = { x: a.x + d.x * t, y: a.y + d.y * t };
+      const off = i % 2 === 0 ? 9 : -9;
+      ctx.lineTo(base.x + perp.x * off, base.y + perp.y * off);
+    }
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  function drawJoints() {
+    if (!world.joints) return;
+    for (const j of world.joints) {
+      const pA = worldAnchor(j.a, j.localA), pB = worldAnchor(j.b, j.localB);
+      if (j instanceof P.SpringJoint) { drawSpring(pA, pB); continue; }
+      ctx.save();
+      ctx.strokeStyle = 'rgba(226,232,240,0.55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash(j instanceof P.DistanceJoint ? [] : [1, 5]);
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawRaycastOverlay() {
+    const turret = meta.turret;
+    if (!turret) return;
+    const dir = { x: mouse.x - turret.x, y: mouse.y - turret.y };
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    const hit = world.raycast(turret, dir, 2000);
+    const end = hit ? hit.point : { x: turret.x + (dir.x / len) * 2000, y: turret.y + (dir.y / len) * 2000 };
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(248,113,113,0.85)'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(turret.x, turret.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath(); ctx.moveTo(turret.x, turret.y - 10); ctx.lineTo(turret.x - 8, turret.y + 8); ctx.lineTo(turret.x + 8, turret.y + 8);
+    ctx.closePath(); ctx.fill();
+
+    if (hit) {
+      ctx.fillStyle = '#f87171';
+      ctx.beginPath(); ctx.arc(hit.point.x, hit.point.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(hit.point.x, hit.point.y);
+      ctx.lineTo(hit.point.x + hit.normal.x * 24, hit.point.y + hit.normal.y * 24); ctx.stroke();
+    }
+
+    const now = performance.now();
+    for (const f of impactFlashes) {
+      const t = (now - f.time) / 400;
+      if (t > 1) continue;
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath(); ctx.arc(f.point.x, f.point.y, 8 + t * 22, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    impactFlashes = impactFlashes.filter(f => now - f.time < 400);
+    ctx.restore();
+  }
+
+  function render(alpha) {
+    ctx.clearRect(0, 0, W, H);
+    drawGrid();
+    for (const b of world.bodies) drawBody(b, alpha);
+    drawJoints();
+    if (scenarioKey === 'raycast') drawRaycastOverlay();
+  }
+
+  function updateStats() {
+    const awake = world.bodies.filter(b => !b.isStatic && !b.sleeping).length;
+    const asleep = world.bodies.filter(b => b.sleeping).length;
+    document.getElementById('stats').textContent =
+      `bodies ${world.bodies.length} · awake ${awake} · asleep ${asleep} · ${fps} fps`;
+  }
+
+  let fps = 60, fpsFrames = 0, fpsLast = performance.now();
+  function tickFps(now) {
+    fpsFrames++;
+    if (now - fpsLast >= 500) { fps = Math.round((fpsFrames * 1000) / (now - fpsLast)); fpsFrames = 0; fpsLast = now; }
+  }
+
+  function canvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+  }
+
+  canvas.addEventListener('mousemove', e => { const p = canvasPoint(e); mouse.x = p.x; mouse.y = p.y; });
+
+  const MAX_PLAYGROUND_BODIES = 90;
+  function spawnRandom(x) {
+    const colors = ['#38bdf8', '#818cf8', '#f472b6', '#fb923c', '#facc15', '#a3e635', '#f87171', '#c084fc'];
+    const color = colors[(Math.random() * colors.length) | 0];
+    let body;
+    if (Math.random() < 0.5) {
+      body = world.add(new P.RigidBody({ shape: P.makeCircle(14 + Math.random() * 14), position: { x, y: 40 }, restitution: 0.2 + Math.random() * 0.6, friction: 0.2 + Math.random() * 0.6 }));
+    } else {
+      const w = 24 + Math.random() * 30, h = 24 + Math.random() * 30;
+      body = world.add(new P.RigidBody({ shape: P.makeBox(w, h), position: { x, y: 40 }, angle: Math.random() * Math.PI, restitution: 0.1 + Math.random() * 0.4, friction: 0.2 + Math.random() * 0.6 }));
+    }
+    body.color = color;
+    const dynamic = world.bodies.filter(b => !b.isStatic);
+    if (dynamic.length > MAX_PLAYGROUND_BODIES) world.remove(dynamic[0]);
+  }
+
+  const RAY_IMPULSE = 350000;
+  canvas.addEventListener('click', e => {
+    const p = canvasPoint(e);
+    if (scenarioKey === 'playground') { spawnRandom(p.x); return; }
+    if (scenarioKey === 'raycast') {
+      const turret = meta.turret;
+      const dir = { x: p.x - turret.x, y: p.y - turret.y };
+      const hit = world.raycast(turret, dir, 2000);
+      if (hit) {
+        impactFlashes.push({ point: hit.point, time: performance.now() });
+        if (!hit.body.isStatic) {
+          hit.body.wake();
+          const d = P.Vec2.normalize(dir);
+          hit.body.applyImpulse(P.Vec2.scale(d, RAY_IMPULSE), P.Vec2.sub(hit.point, hit.body.position));
+        }
+      }
+    }
+  });
+
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => loadScenario(btn.dataset.key));
+  });
+  document.getElementById('reset').addEventListener('click', () => loadScenario(scenarioKey));
+
+  let lastT = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - lastT) / 1000, 1 / 20);
+    lastT = now;
+    const alpha = world.update(dt);
+    render(alpha);
+    tickFps(now);
+    updateStats();
+    requestAnimationFrame(frame);
+  }
+
+  loadScenario('bounce');
+  requestAnimationFrame(frame);
+}
+
+</script>

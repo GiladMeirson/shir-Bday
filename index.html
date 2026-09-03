@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>יום הולדת שמח אהבה שלי 🎁</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&family=Secular+One&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ───────────── מסך 1: פתיח וברכה ───────────── -->
+<section id="screen-intro" class="screen active">
+  <div class="intro-glow"></div>
+  <div class="intro-card">
+    <div class="intro-balloons" aria-hidden="true">
+      <span class="balloon b1"></span><span class="balloon b2"></span><span class="balloon b3"></span>
+    </div>
+    <h1 class="intro-title">שיר, יום הולדת שמח! 🎂</h1>
+    <div class="intro-text" id="greeting-text">
+      <!-- PLACEHOLDER: הברכה האישית תיכתב כאן (js/app.js → CONFIG.greeting) -->
+    </div>
+    <button class="btn btn-primary btn-big" id="btn-to-gift">
+      <span>לפתיחת המתנה 🎁</span>
+    </button>
+  </div>
+</section>
+
+<!-- ───────────── מסך 2: מכונת הקלואו ───────────── -->
+<section id="screen-game" class="screen">
+  <div class="game-wrap">
+    <canvas id="claw-canvas" width="420" height="600"></canvas>
+
+    <div class="hud">
+      <div class="hud-msg" id="hud-msg">הזיזי את הזרוע עם החצים, ולחצי על הכפתור האדום כדי לתפוס</div>
+    </div>
+
+    <div class="controls" dir="ltr">
+      <button class="ctl ctl-arrow" id="btn-left" aria-label="שמאלה">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="ctl ctl-drop" id="btn-drop" aria-label="תפוס">
+        <span class="drop-cap"></span>
+        <span class="drop-label" dir="rtl">תפסי!</span>
+      </button>
+      <button class="ctl ctl-arrow" id="btn-right" aria-label="ימינה">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="hint-keys">אפשר גם עם החצים במקלדת ורווח</div>
+  </div>
+</section>
+
+<!-- ───────────── מסך 3: פתיחת המתנה ───────────── -->
+<section id="screen-reveal" class="screen">
+  <canvas id="confetti-canvas"></canvas>
+  <div class="reveal-wrap">
+
+    <!-- שלב א: המתנה הארוזה -->
+    <div class="wrapped" id="wrapped">
+      <div class="wrapped-caption" id="wrapped-caption">תפסת! לחצי על המתנה כדי לפתוח</div>
+      <button class="giftbox" id="giftbox" aria-label="פתחי את המתנה">
+        <div class="gb-rays" aria-hidden="true"></div>
+        <div class="gb-core" aria-hidden="true"></div>
+        <div class="gb-lid"><div class="gb-bow"><i></i><i></i><b></b></div><div class="gb-lid-ribbon"></div></div>
+        <div class="gb-body"><div class="gb-ribbon-v"></div><div class="gb-ribbon-h"></div></div>
+      </button>
+    </div>
+
+    <!-- שלב ב: הכרטיס -->
+    <div class="gift-card" id="gift-card" hidden>
+      <div class="gift-badge" id="gift-badge">מתנה מס׳ 1</div>
+      <div class="gift-photo"><img id="gift-img" alt=""></div>
+      <div class="gift-body">
+        <div class="gift-kicker" id="gift-kicker"></div>
+        <h2 class="gift-title" id="gift-title"></h2>
+        <p class="gift-sub" id="gift-sub"></p>
+        <div id="gift-extra"></div>
+      </div>
+      <div class="gift-actions">
+        <button class="btn btn-ghost" id="btn-reject">לא אהבתי, רוצה מתנה אחרת 😒</button>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<script src="js/engine.js"></script>
+<script src="js/atelier.js"></script>
+<script src="js/claw.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
