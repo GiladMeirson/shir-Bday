@@ -94,9 +94,18 @@
   const screens = { intro: $('#screen-intro'), letter: $('#screen-letter'), game: $('#screen-game'), reveal: $('#screen-reveal') };
   let game = null, giftIndex = 0, pendingWin = null;
 
+  // Progress survives a refresh (sessionStorage: cleared when the tab/site is closed).
+  // Shape: { screen, giftIndex, stage: 'wrapped' | 'opened' | null, style, size }
+  const STORE_KEY = 'shir-bday-state';
+  const State = {
+    load() { try { return JSON.parse(sessionStorage.getItem(STORE_KEY)) || null; } catch { return null; } },
+    save(patch) { try { sessionStorage.setItem(STORE_KEY, JSON.stringify(Object.assign(this.load() || {}, patch))); } catch { /* private mode etc. */ } },
+  };
+
   function show(name) {
     for (const k in screens) screens[k].classList.toggle('active', k === name);
     window.scrollTo(0, 0);
+    State.save({ screen: name, giftIndex, stage: null });
   }
 
   // Sounds live in js/sfx.js (procedural Web Audio); the plane in js/plane.js.
@@ -212,7 +221,17 @@
     const card = $('#gift-card');
     card.hidden = true; card.classList.toggle('final', !!gift.final);
     show('reveal');
+    State.save({ stage: 'wrapped', style: data.style, size: data.size });
     box.onclick = () => openGift(gift);
+  }
+
+  // Card visible, box gone — used after the opening animation and when restoring an opened gift.
+  function showOpened(gift) {
+    $('#wrapped').hidden = true;
+    $('#giftbox').classList.remove('opening');
+    fillCard(gift);
+    $('#gift-card').hidden = false;
+    State.save({ stage: 'opened' });
   }
 
   function openGift(gift) {
@@ -225,10 +244,7 @@
     setTimeout(() => {
       box.classList.add('gone');
       setTimeout(() => {
-        $('#wrapped').hidden = true;
-        box.classList.remove('opening');
-        fillCard(gift);
-        $('#gift-card').hidden = false;
+        showOpened(gift);
         // Confetti scales with the gift: a polite sprinkle for #1, the works for Thailand.
         const level = gift.final ? 1 : ([0.12, 0.3, 0.55][giftIndex] ?? 0.55);
         Confetti.burst(level);
@@ -395,10 +411,29 @@
     giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, parseInt(qs.get('gift'), 10) || 0));
     const sample = { style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] }, size: 50 };
     showReveal(sample);
-    if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; $('#wrapped').hidden = true; fillCard(gift); $('#gift-card').hidden = false; if (gift.final) PlaneRoute.start(); }
+    if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; showOpened(gift); if (gift.final) PlaneRoute.start(); }
   } else if (qs.get('screen') === 'game') {
     enterGame();
   } else if (qs.get('screen') === 'letter') {
     show('letter');
+  } else {
+    restore();
+  }
+
+  // Put the user back where they were before a refresh (no sounds/confetti — just the screen).
+  function restore() {
+    const s = State.load();
+    if (!s || !s.screen || s.screen === 'intro') return;
+    giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, s.giftIndex | 0));
+    if (s.screen === 'letter') { show('letter'); return; }
+    if (s.screen === 'game') { enterGame(); return; }
+    if (s.screen === 'reveal' && s.style) {
+      showReveal({ style: s.style, size: s.size || 50 });
+      if (s.stage === 'opened') {
+        const gift = CONFIG.gifts[giftIndex];
+        showOpened(gift);
+        if (gift.final) PlaneRoute.start();
+      }
+    }
   }
 })();
