@@ -34,7 +34,9 @@
 ```
 index.html          מסכים (פתיח / משחק / חשיפה)
 css/style.css       עיצוב
-js/app.js           CONFIG, זרימת המסכים, סאונד, קונפטי
+js/app.js           CONFIG, זרימת המסכים, קונפטי
+js/sfx.js           אפקטים קוליים (Web Audio, ללא קבצי אודיו) + כפתור השתקה
+js/plane.js         אנימציית המטוס על כרטיסי הטיסה
 js/claw.js          המשחק: פיזיקה + רינדור
 js/engine.js        מנוע פיזיקה (נוצר אוטומטית מ־.claude/skills/physics-2d)
 js/atelier.js       Shading/Easing/Noise (נוצר אוטומטית מ־.claude/skills/canvas-atelier)

@@ -84,13 +84,14 @@
           nights: "16",
         },
         finalNote: "תאריכים: <b>31.10.2026</b> עד <b>14.11.2026</b> 15 ימים·",
+        planLink: { url: "https://giladmeirson.github.io/thailand_vaction/", label: "לתכנון החופשה המלא 🗺️" },
       },
     ],
   };
   // ═══════════════════════════════════════════════════════════════════════
 
   const $ = (s) => document.querySelector(s);
-  const screens = { intro: $('#screen-intro'), game: $('#screen-game'), reveal: $('#screen-reveal') };
+  const screens = { intro: $('#screen-intro'), letter: $('#screen-letter'), game: $('#screen-game'), reveal: $('#screen-reveal') };
   let game = null, giftIndex = 0, pendingWin = null;
 
   function show(name) {
@@ -98,34 +99,8 @@
     window.scrollTo(0, 0);
   }
 
-  // ─────────────────────────── sound (tiny synth) ───────────────────────────
-  const Sound = (() => {
-    let ac = null;
-    const ctx = () => (ac ||= new (window.AudioContext || window.webkitAudioContext)());
-    const unlock = () => { try { const c = ctx(); if (c.state === 'suspended') c.resume(); } catch (e) {} };
-    function tone(freq, dur, { type = 'sine', vol = 0.18, slide = 0, delay = 0 } = {}) {
-      try {
-        const c = ctx(), o = c.createOscillator(), g = c.createGain();
-        const t0 = c.currentTime + delay;
-        o.type = type; o.frequency.setValueAtTime(freq, t0);
-        if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
-        g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
-        o.connect(g).connect(c.destination); o.start(t0); o.stop(t0 + dur + 0.02);
-      } catch (e) {}
-    }
-    return {
-      unlock,
-      click: () => tone(900, 0.06, { type: 'square', vol: 0.06 }),
-      drop: () => tone(220, 0.35, { type: 'sawtooth', vol: 0.08, slide: -120 }),
-      grab: () => { tone(520, 0.08, { type: 'square', vol: 0.08 }); tone(780, 0.12, { type: 'square', vol: 0.07, delay: 0.08 }); },
-      slip: () => tone(420, 0.5, { type: 'triangle', vol: 0.12, slide: -300 }),
-      miss: () => tone(300, 0.4, { type: 'triangle', vol: 0.1, slide: -160 }),
-      win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.28, { vol: 0.12, delay: i * 0.11 })),
-      fanfare: () => [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => tone(f, i === 6 ? 0.9 : 0.22, { vol: 0.13, delay: i * 0.13 })),
-      open: () => tone(600, 0.25, { type: 'sine', vol: 0.12, slide: 500 }),
-    };
-  })();
+  // Sounds live in js/sfx.js (procedural Web Audio); the plane in js/plane.js.
+  const Sound = window.SFX;
 
   // ─────────────────────────── intro ───────────────────────────
   function renderGreeting() {
@@ -162,7 +137,12 @@
       onEvent(type, data) {
         switch (type) {
           case 'drop': Sound.drop(); say('יורדת…'); break;
+          case 'close': Sound.clank(data.hit); break;
           case 'grab': Sound.grab(); say(pick('grab'), 'good'); break;
+          case 'release': Sound.release(); break;
+          case 'home': Sound.home(); break;
+          case 'thud': Sound.thud(data.speed); break;
+          case 'tick': Sound.motor.update(data.state, data.vx); break;
           case 'empty': Sound.miss(); say(pick('empty'), 'bad'); break;
           case 'slip': Sound.slip(); say(pick('slip'), 'bad'); break;
           case 'nearmiss': Sound.miss(); say(pick('nearmiss'), 'bad'); break;
@@ -252,7 +232,14 @@
         // Confetti scales with the gift: a polite sprinkle for #1, the works for Thailand.
         const level = gift.final ? 1 : ([0.12, 0.3, 0.55][giftIndex] ?? 0.55);
         Confetti.burst(level);
-        if (gift.final) Sound.fanfare();
+        Sound.popper(level);
+        setTimeout(() => Sound.crowd(level), 120);
+        if (gift.final) {
+          Sound.fanfare();
+          PlaneRoute.start();
+          setTimeout(() => Sound.chime(), 2400);
+          setTimeout(() => Sound.whoosh(), 3600);
+        }
       }, 420);
     }, 900);
   }
@@ -293,7 +280,11 @@
     const extra = $('#gift-extra'); extra.innerHTML = '';
     const reject = $('#btn-reject');
     if (gift.final) {
-      extra.innerHTML = boardingPasses(gift.flights) + `<p class="final-note">${gift.finalNote}</p>`;
+      extra.innerHTML = boardingPasses(gift.flights) + `<p class="final-note">${gift.finalNote}</p>`
+        + (gift.planLink ? `<a class="plan-link" href="${gift.planLink.url}" target="_blank" rel="noopener">
+            <span class="plan-link-kicker">רוצה לראות מה מחכה לנו שם?</span>
+            <span class="plan-link-label">${gift.planLink.label}</span>
+          </a>` : '');
       reject.hidden = true;
     } else {
       reject.hidden = false;
@@ -301,7 +292,6 @@
     }
   }
 
-  const planeSvg = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`;
   function pass(leg, f, who, seat) {
     return `
     <div class="pass">
@@ -309,7 +299,7 @@
         <div class="pass-head"><span class="airline">${f.airline}</span><span>BOARDING PASS · ${leg.flight}</span></div>
         <div class="pass-route">
           <div class="from"><div class="code">${leg.from}</div><div class="city">${leg.fromCity}</div></div>
-          <div class="plane" aria-hidden="true"><span class="trail"></span><span class="jet">${planeSvg}</span></div>
+          <div class="plane" aria-hidden="true">${PlaneRoute.markup()}</div>
           <div class="to"><div class="code">${leg.to}</div><div class="city">${leg.toCity}</div></div>
         </div>
         <div class="pass-grid">
@@ -389,16 +379,26 @@
   // ─────────────────────────── boot ───────────────────────────
   renderGreeting();
   $('#btn-to-gift').addEventListener('click', () => { Sound.unlock(); Sound.click(); enterGame(); });
+  window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
+  const muteBtn = $('#btn-mute');
+  const paintMute = () => { muteBtn.textContent = Sound.muted ? '🔇' : '🔊'; muteBtn.setAttribute('aria-label', Sound.muted ? 'הפעלת צלילים' : 'השתקת צלילים'); muteBtn.classList.toggle('off', Sound.muted); };
+  muteBtn.addEventListener('click', () => { Sound.unlock(); Sound.toggle(); paintMute(); if (!Sound.muted) Sound.click(); });
+  paintMute();
+  $('#btn-to-letter').addEventListener('click', () => { Sound.unlock(); Sound.open(); show('letter'); });
+  $('#btn-letter-back').addEventListener('click', () => { Sound.click(); show('intro'); });
+  $('#btn-letter-gift').addEventListener('click', () => { Sound.click(); enterGame(); });
 
   // Dev preview: index.html?gift=2 shows the wrapped box for gift #3; add &open=1 to open it;
-  // index.html?screen=game jumps straight to the machine.
+  // index.html?screen=game jumps straight to the machine; ?screen=letter opens the greeting.
   const qs = new URLSearchParams(location.search);
   if (qs.has('gift')) {
     giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, parseInt(qs.get('gift'), 10) || 0));
     const sample = { style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] }, size: 50 };
     showReveal(sample);
-    if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; $('#wrapped').hidden = true; fillCard(gift); $('#gift-card').hidden = false; }
+    if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; $('#wrapped').hidden = true; fillCard(gift); $('#gift-card').hidden = false; if (gift.final) PlaneRoute.start(); }
   } else if (qs.get('screen') === 'game') {
     enterGame();
+  } else if (qs.get('screen') === 'letter') {
+    show('letter');
   }
 })();

@@ -6,10 +6,12 @@
 <title>יום הולדת שמח אהבה שלי 🎁</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&family=Secular+One&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&family=Secular+One&family=Share+Tech+Mono&family=Frank+Ruhl+Libre:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+<button class="mute" id="btn-mute" type="button" aria-label="השתקת צלילים">🔊</button>
 
 <!-- ───────────── מסך 1: פתיח וברכה ───────────── -->
 <section id="screen-intro" class="screen active">
@@ -19,12 +21,43 @@
       <span class="balloon b1"></span><span class="balloon b2"></span><span class="balloon b3"></span>
     </div>
     <h1 class="intro-title">שיר, יום הולדת שמח! 🎂</h1>
-    <div class="intro-text" id="greeting-text">
-      <!-- PLACEHOLDER: הברכה האישית תיכתב כאן (js/app.js → CONFIG.greeting) -->
+    <p class="intro-sub">יש פה שני דברים בשבילך. מאיפה מתחילים?</p>
+    <div class="menu">
+      <button class="btn btn-primary btn-big" id="btn-to-gift">
+        <span>לפתיחת המתנה 🎁</span>
+      </button>
+      <button class="btn btn-ghost btn-big" id="btn-to-letter">
+        <span>לקריאת הברכה 💌</span>
+      </button>
     </div>
-    <button class="btn btn-primary btn-big" id="btn-to-gift">
-      <span>לפתיחת המתנה 🎁</span>
-    </button>
+  </div>
+</section>
+
+<!-- ───────────── מסך 1ב: הברכה, על נייר ───────────── -->
+<section id="screen-letter" class="screen">
+  <div class="letter-wrap">
+    <article class="letter" dir="rtl">
+      <div class="letter-edge" aria-hidden="true"></div>
+      <div class="letter-inner">
+        <div class="letter-head">
+          <span class="letter-date">יום ההולדת שלך</span>
+          <span class="letter-mark" aria-hidden="true">✦</span>
+        </div>
+        <h2 class="letter-title">שיר היקרה,</h2>
+        <div class="letter-text" id="greeting-text">
+          <!-- PLACEHOLDER: הברכה האישית תיכתב כאן (js/app.js → CONFIG.greeting) -->
+        </div>
+        <div class="letter-sign">
+          <span class="letter-sign-line">באהבה,</span>
+          <span class="letter-sign-name">גלעד</span>
+        </div>
+        <div class="wax" aria-hidden="true"><span>ש</span></div>
+      </div>
+    </article>
+    <div class="letter-actions">
+      <button class="btn btn-ghost" id="btn-letter-back">↩ חזרה</button>
+      <button class="btn btn-primary" id="btn-letter-gift">עכשיו למתנה 🎁</button>
+    </div>
   </div>
 </section>
 
@@ -90,6 +123,8 @@
 <script src="js/engine.js"></script>
 <script src="js/atelier.js"></script>
 <script src="js/claw.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/plane.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
