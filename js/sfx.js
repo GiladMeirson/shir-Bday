@@ -5,6 +5,7 @@
  *   SFX.motor.update(state, vx)  continuous carriage hum / winch whine, driven every game tick
  *   one-shots: click drop clank grab slip miss thud release home win fanfare
  *              open popper crowd chime whoosh
+ *   SFX.music.play(src) / stop()  background track (HTMLAudio, mp3 from assets/); follows mute
  */
 window.SFX = (() => {
   'use strict';
@@ -203,6 +204,29 @@ window.SFX = (() => {
     burst(0.9, { f: 1900, q: 0.7, vol: 0.09, delay: 1.1, a: 0.05, slideTo: 220 });
   }
 
+  // Background music: one <audio> at a time. play() swaps tracks; the same src keeps playing.
+  const music = (() => {
+    let el = null, src = '';
+    function play(next, { volume = 0.7, loop = true } = {}) {
+      try {
+        if (!next) return stop();
+        if (el && src === next && !el.paused) return;
+        stop();
+        src = next;
+        el = new Audio(next); el.loop = loop; el.volume = volume; el.muted = muted;
+        el.play().catch((e) => console.warn('[sfx music]', e));
+      } catch (e) { console.warn('[sfx music]', e); }
+    }
+    function stop() {
+      if (!el) return;
+      try { el.pause(); el.currentTime = 0; } catch (e) {}
+      el = null; src = '';
+    }
+    function setMuted(b) { if (el) el.muted = b; }
+    document.addEventListener('visibilitychange', () => { try { if (!el) return; document.hidden ? el.pause() : el.play().catch(() => {}); } catch (e) {} });
+    return { play, stop, setMuted, get src() { return src; } };
+  })();
+
   const api = {
     unlock,
     get muted() { return muted; },
@@ -210,7 +234,9 @@ window.SFX = (() => {
       muted = !!b;
       try { localStorage.setItem(KEY, muted ? '1' : '0'); } catch (e) {}
       if (ac && master) master.gain.setTargetAtTime(muted ? 0 : 1, ac.currentTime, 0.02);
+      music.setMuted(muted);
     },
+    music,
     toggle() { api.setMuted(!muted); return muted; },
     motor,
 

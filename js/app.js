@@ -41,6 +41,7 @@
       },
       {
         img: "assets/ras-el-hime-present.jpeg",
+        music: "assets/arab-money.mp3",
         kicker: "החופשה החלומית",
         title: "חופשה בראס אל־ח׳ימה 🏜️",
         sub: "חופשה בראס אל־ח'ימה. דובאי באווירת רמאללה, אבל עם מלון 5 כוכבים.",
@@ -49,6 +50,7 @@
       {
         final: true,
         img: "assets/thailand-present.jpeg",
+        music: "assets/vacation.mp3",
         sticker: "assets/thailand-sticker.webp",   // animated WebP (WhatsApp sticker) over the photo
         kicker: "המתנה האמיתית",
         title: "טסים לתאילנד! 🌴",
@@ -193,6 +195,7 @@
   }
 
   function enterGame() {
+    Sound.music.stop();
     show('game');
     if (!game) setupGame();
     game.setEnabled(true);
@@ -231,6 +234,7 @@
     $('#giftbox').classList.remove('opening');
     fillCard(gift);
     $('#gift-card').hidden = false;
+    Sound.music.play(gift.music);   // per-gift track (Ras al-Khaimah / Thailand); stops any previous one
     State.save({ stage: 'opened' });
   }
 
