@@ -449,6 +449,16 @@ button { font-family: inherit; cursor: pointer; }
 .plan-link:active { transform: translateY(0); }
 .plan-link-kicker { font-size: 13px; color: #9fc9d8; }
 .plan-link-label { font-family: var(--display); font-size: 21px; color: #7fe3d3; letter-spacing: .01em; }
+/* "רגע..מה?!" — same look as the old plan link, but a button that opens the Q&A screen. */
+.faq-link {
+  font-family: inherit; cursor: pointer;
+  animation: card-in .7s cubic-bezier(.2,.9,.2,1.05) .45s both, faq-pulse 2.8s ease-in-out 1.6s infinite;
+}
+.faq-link .plan-link-label { font-size: 25px; }
+@keyframes faq-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(127,227,211,0); }
+  45% { box-shadow: 0 0 0 7px rgba(127,227,211,.13), 0 12px 30px -12px rgba(127,227,211,.5); }
+}
 .gift-card.final .gift-actions { padding-top: 6px; }
 
 @media (max-width: 480px) {
@@ -468,4 +478,79 @@ button { font-family: inherit; cursor: pointer; }
   .pass-stub .name { text-align: start; overflow-wrap: anywhere; }
   .pass-stub .barcode { width: 64px; height: 30px; }
   .pass-stub .seat { text-align: end; white-space: nowrap; }
+}
+
+/* ───────────── FAQ — "רגע..מה?!" (user Q&A accordion) ─────────────
+   Same night-teal palette as the Thailand card. Each item is a question "posted" by the asker;
+   tapping it expands the answer beneath, chat-style, one open at a time. */
+#screen-faq { align-items: flex-start; }
+.faq-wrap { width: min(560px, 100%); display: grid; gap: 18px; padding-top: 40px; }
+.faq-head { text-align: center; animation: hud-pop .6s ease both; }
+.faq-kicker { font-size: 13px; font-weight: 700; letter-spacing: .1em; color: #7fe3d3; text-transform: uppercase; }
+.faq-title {
+  font-family: var(--display); font-weight: 400; font-size: clamp(32px, 8vw, 46px); line-height: 1.15;
+  margin: 6px 0 10px; color: #fff; text-shadow: 0 0 30px rgba(127,227,211,.35);
+}
+.faq-sub { margin: 0 auto; max-width: 440px; color: #bcd8e6; font-size: 16.5px; line-height: 1.6; }
+
+.faq-list { display: grid; gap: 12px; }
+.faq-item {
+  border-radius: 18px; overflow: hidden;
+  background: linear-gradient(180deg, #123243, #0d2334);
+  border: 1px solid rgba(127,227,211,.18);
+  box-shadow: 0 24px 40px -26px rgba(0,0,0,.85);
+  animation: card-in .6s cubic-bezier(.2,.9,.2,1.05) calc(.1s + var(--i, 0) * 70ms) both;
+  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+.faq-item.open {
+  border-color: rgba(127,227,211,.55);
+  box-shadow: 0 26px 50px -24px rgba(127,227,211,.35), 0 0 0 1px rgba(127,227,211,.15);
+}
+.faq-q {
+  width: 100%; border: 0; background: transparent; color: #eaf6ff; text-align: start;
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+  padding: 14px 16px; font-size: 17px; line-height: 1.4;
+  transition: background .2s ease;
+}
+.faq-q:hover { background: rgba(255,255,255,.04); }
+.faq-q:active { background: rgba(255,255,255,.07); }
+.faq-avatar {
+  width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  font-family: var(--display); font-size: 18px; line-height: 1;
+  box-shadow: inset 0 -3px 6px rgba(0,0,0,.28), inset 0 2px 4px rgba(255,255,255,.35), 0 4px 10px -4px rgba(0,0,0,.6);
+}
+.faq-avatar-user { background: radial-gradient(circle at 35% 30%, #ffb3c6, #ff6b8a 55%, #b7304f); color: #fff; }
+.faq-avatar-me { background: radial-gradient(circle at 35% 30%, #ffe08a, var(--gold) 55%, var(--gold-deep)); color: #3a2200; }
+.faq-q-body, .faq-a-body { display: grid; gap: 3px; min-width: 0; }
+.faq-who { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #7fb3c4; text-transform: uppercase; }
+.faq-q-text { font-weight: 600; overflow-wrap: anywhere; }
+.faq-chev { width: 24px; height: 24px; color: #7fe3d3; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+.faq-chev svg { width: 100%; height: 100%; display: block; }
+.faq-item.open .faq-chev { transform: rotate(180deg); }
+
+/* Expand/collapse via grid rows (animates to the answer's natural height). */
+.faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .38s cubic-bezier(.2,.8,.2,1); }
+.faq-item.open .faq-a { grid-template-rows: 1fr; }
+.faq-a-inner { overflow: hidden; min-height: 0; }
+.faq-a-row {
+  display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 12px;
+  margin: 0 12px 12px; padding: 12px 12px 14px; border-radius: 14px;
+  background: rgba(246,196,83,.07); border: 1px dashed rgba(246,196,83,.35);
+  opacity: 0; transform: translateY(-8px);
+  transition: opacity .3s ease .05s, transform .35s cubic-bezier(.2,.8,.2,1) .05s;
+}
+.faq-item.open .faq-a-row { opacity: 1; transform: none; }
+.faq-a-row .faq-who { color: var(--gold); }
+.faq-a-text { font-size: 16px; line-height: 1.65; color: #eaf6ff; overflow-wrap: anywhere; }
+.faq-a-text b { color: var(--gold); }
+
+.faq-outro { margin: 4px 0 0; text-align: center; color: #9fc9d8; font-size: 15px; line-height: 1.5; }
+.faq-actions { display: flex; justify-content: center; animation: hud-pop .6s ease .5s both; }
+
+@media (max-width: 420px) {
+  .faq-wrap { padding-top: 34px; gap: 14px; }
+  .faq-q { padding: 12px 12px; font-size: 16px; gap: 10px; }
+  .faq-avatar { width: 34px; height: 34px; font-size: 16px; }
+  .faq-a-row { margin: 0 8px 8px; padding: 10px 10px 12px; gap: 10px; }
+  .faq-a-text { font-size: 15.5px; }
 }

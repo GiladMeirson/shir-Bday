@@ -33,7 +33,7 @@
         caption: "תפסת! לחצי על המתנה כדי לפתוח",
       },
       {
-        img: "assets/tveria-present.jpeg",
+        img: "assets/tveria-present.png",
         kicker: "סוף שבוע זוגי (עם הילדה)",
         title: "חופשה במלון בטבריה 🏨",
         sub: `שני לילות בטבריה. כי רציתי לקחת אותך לחו"ל, אבל אז פתחתי את חשבון הבנק. אז אותה כנרת, אותם פקקים — הפעם עם מזוודה.`,
@@ -86,15 +86,82 @@
           nights: "16",
         },
         finalNote: "תאריכים: <b>31.10.2026</b> עד <b>14.11.2026</b> 15 ימים·",
-        planLink: { url: "https://giladmeirson.github.io/thailand_vaction/", label: "לתכנון החופשה המלא 🗺️" },
+        // הכפתור בתחתית הכרטיס — מוביל לדף השאלות והתשובות (CONFIG.faq למטה).
+        faqLink: { kicker: "יש לך שאלות? חשבתי על הכול.", label: "רגע..מה?!" },
       },
     ],
+
+    // ─── דף "שאלות ותשובות" — נפתח מהכפתור שבתחתית המתנה האחרונה ───
+    // מוסיפים / מוחקים / מסדרים שאלות חופשי ב-items. בתשובות מותר HTML (למשל <b>מודגש</b>).
+    faq: {
+      kicker: "שאלות ותשובות",
+      title: "רגע..מה?! 🤯",
+      sub: "כל מה שעובר לך עכשיו בראש — כבר חשבתי על זה. לחצי על שאלה כדי לראות את התשובה.",
+      asker: "שיר",       // מי שואלת (מופיע ליד השאלה)
+      answerer: "גלעד",   // מי עונה (מופיע ליד התשובה)
+      items: [
+        {
+          q: "אבל מה עם ארבל?",
+          a: "כמובן שהיא באה איתנו להינות מהחופשה גם.",
+        },
+        {
+          q: "אבל מה עם העבודה שלי? יש לי סגירת חודש",
+          a: "הכל נסגר מול רועי ויש אישור לזה.",
+        },
+        {
+          q: "מה עם אייבי?",
+          a: "כבר ארגנתי סידור בטוח וטוב לאייבי.",
+        },
+        {
+          q: "אבל לאן בתאילנד?",
+          a: "כבר ביצעתי מחקר מעמיק של יעדים ואטרקציות. נוחתים בבנגקוק, מעבירים שם לילה ואז נוסעים לפוקט, ושם נבקר ב-2 יעדים מגניבים.",
+        },
+        {
+          q: "ומה אם נרצה קצת זמן לעצמנו?",
+          a: "כבר יש לי מספר טלפון של נני מאוד מומלצת על ידי ישראלים אחרים. דיברתי איתה והיא זמינה אם נצטרך ידיים נוספות לארבל.",
+        },
+        {
+          q: "האם צריך חיסונים?",
+          a: "גם זה נבדק. ילדים מעל גיל שנה לא צריכים חיסונים, הם כבר עשו כל מה שצריך — וגם אנחנו לא.",
+        },
+      ],
+      outro: "יש עוד שאלה? תשאלי אותי ישירות 😘",
+      backLabel: "↩ חזרה למתנה",
+    },
   };
   // ═══════════════════════════════════════════════════════════════════════
 
   const $ = (s) => document.querySelector(s);
-  const screens = { intro: $('#screen-intro'), letter: $('#screen-letter'), game: $('#screen-game'), reveal: $('#screen-reveal') };
+  const screens = { intro: $('#screen-intro'), letter: $('#screen-letter'), game: $('#screen-game'), reveal: $('#screen-reveal'), faq: $('#screen-faq') };
   let game = null, giftIndex = 0, pendingWin = null;
+  // Wrapping used when a reveal is shown without a real catch (dev preview / restore without a saved style).
+  const SAMPLE_WIN = { style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] }, size: 50 };
+
+  // Gift photos are big (up to a few MB). Fetch + decode them ahead of time so the card never
+  // paints the previous gift's picture while the next one is still loading.
+  const Preload = {
+    imgs: new Map(),   // url -> <img> (kept alive so the decoded bitmap stays cached)
+    image(url) {
+      let el = this.imgs.get(url);
+      if (!el) {
+        el = new Image(); el.decoding = 'async'; el.src = url;
+        el.decode?.().catch(() => {});     // warm the decoded bitmap; failures just fall back to a normal load
+        this.imgs.set(url, el);
+      }
+      return el;
+    },
+    gift(g) { if (g.img) this.image(g.img); if (g.sticker) this.image(g.sticker); },
+    // Load the remaining gifts one after another (current gift first) so they don't compete for bandwidth.
+    ahead(from = giftIndex) {
+      const rest = CONFIG.gifts.slice(from);
+      const next = () => {
+        const g = rest.shift(); if (!g) return;
+        const el = this.image(g.img); if (g.sticker) this.image(g.sticker);
+        (el.complete ? Promise.resolve() : new Promise((r) => { el.addEventListener('load', r, { once: true }); el.addEventListener('error', r, { once: true }); })).then(next);
+      };
+      next();
+    },
+  };
 
   // Progress survives a refresh (sessionStorage: cleared when the tab/site is closed).
   // Shape: { screen, giftIndex, stage: 'wrapped' | 'opened' | null, style, size }
@@ -197,6 +264,7 @@
   function enterGame() {
     Sound.music.stop();
     show('game');
+    Preload.ahead();
     if (!game) setupGame();
     game.setEnabled(true);
     say(giftIndex === 0 ? MSG.ready[0] : 'אוקיי… בואי ננסה מתנה אחרת 🎯');
@@ -215,6 +283,7 @@
 
   function showReveal(data) {
     const gift = CONFIG.gifts[Math.min(giftIndex, CONFIG.gifts.length - 1)];
+    Preload.gift(gift);   // caught: make sure this gift's photo is in by the time the box is opened
     const box = $('#giftbox');
     box.style.setProperty('--wrap', hslCss(data.style.wrap));
     box.style.setProperty('--ribbon', hslCss(data.style.ribbon));
@@ -286,8 +355,13 @@
     const badge = $('#gift-badge');
     badge.hidden = !gift.final;
     badge.textContent = '🎁 המתנה האמיתית';
-    const img = $('#gift-img'); img.src = gift.img; img.alt = gift.title;
+    // Swap in the preloaded (already decoded) element instead of re-pointing the old <img>,
+    // so the previous gift's photo is never shown while the new one loads.
+    let img = $('#gift-img');
     const photo = img.parentElement;
+    const ready = Preload.image(gift.img);
+    if (ready !== img) { ready.id = 'gift-img'; img.replaceWith(ready); img = ready; }
+    img.alt = gift.title;
     photo.querySelector('.sticker')?.remove();
     if (gift.sticker) {
       const st = document.createElement('img');
@@ -301,11 +375,12 @@
     const reject = $('#btn-reject');
     if (gift.final) {
       extra.innerHTML = boardingPasses(gift.flights) + `<p class="final-note">${gift.finalNote}</p>`
-        + (gift.planLink ? `<a class="plan-link" href="${gift.planLink.url}" target="_blank" rel="noopener">
-            <span class="plan-link-kicker">רוצה לראות מה מחכה לנו שם?</span>
-            <span class="plan-link-label">${gift.planLink.label}</span>
-          </a>` : '');
+        + (gift.faqLink && CONFIG.faq ? `<button type="button" class="plan-link faq-link" id="btn-faq">
+            <span class="plan-link-kicker">${gift.faqLink.kicker || ''}</span>
+            <span class="plan-link-label">${gift.faqLink.label}</span>
+          </button>` : '');
       reject.hidden = true;
+      $('#btn-faq')?.addEventListener('click', () => { Sound.click(); enterFaq(); });
     } else {
       reject.hidden = false;
       reject.onclick = () => { Sound.click(); giftIndex++; enterGame(); };
@@ -340,6 +415,69 @@
     const seats = ['12A', '12B', '12C'];
     const out = f.passengers.map((p, i) => pass(f.out, f, p, seats[i] || '12D')).join('');
     return `<div class="boarding">${out}</div>`;
+  }
+
+  // ─────────────────────────── FAQ (שאלות ותשובות) ───────────────────────────
+  const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const initial = (name) => (name || '?').trim().charAt(0);
+
+  function renderFaq() {
+    const f = CONFIG.faq;
+    if (!f) return;
+    $('#faq-kicker').textContent = f.kicker || '';
+    $('#faq-title').textContent = f.title || '';
+    $('#faq-sub').textContent = f.sub || '';
+    $('#faq-outro').textContent = f.outro || '';
+    $('#faq-outro').hidden = !f.outro;
+    $('#btn-faq-back').textContent = f.backLabel || '↩ חזרה';
+    const list = $('#faq-list'); list.innerHTML = '';
+    (f.items || []).forEach((it, i) => {
+      const item = document.createElement('div');
+      item.className = 'faq-item'; item.style.setProperty('--i', i);
+      item.innerHTML = `
+        <button type="button" class="faq-q" id="faq-q-${i}" aria-expanded="false" aria-controls="faq-a-${i}">
+          <span class="faq-avatar faq-avatar-user" aria-hidden="true">${initial(f.asker)}</span>
+          <span class="faq-q-body"><span class="faq-who">${f.asker || ''}</span><span class="faq-q-text">${it.q}</span></span>
+          <span class="faq-chev" aria-hidden="true">${CHEVRON}</span>
+        </button>
+        <div class="faq-a" id="faq-a-${i}" role="region" aria-labelledby="faq-q-${i}">
+          <div class="faq-a-inner">
+            <div class="faq-a-row">
+              <span class="faq-avatar faq-avatar-me" aria-hidden="true">${initial(f.answerer)}</span>
+              <div class="faq-a-body"><span class="faq-who">${f.answerer || ''}</span><div class="faq-a-text">${it.a}</div></div>
+            </div>
+          </div>
+        </div>`;
+      list.appendChild(item);
+    });
+    // Accordion: one open at a time; clicking the open one closes it.
+    list.addEventListener('click', (e) => {
+      const q = e.target.closest('.faq-q'); if (!q) return;
+      const item = q.parentElement, willOpen = !item.classList.contains('open');
+      closeAllFaq();
+      if (willOpen) { item.classList.add('open'); q.setAttribute('aria-expanded', 'true'); }
+      Sound.click();
+    });
+    $('#btn-faq-back').addEventListener('click', () => { Sound.click(); show('reveal'); State.save({ stage: 'opened' }); });
+  }
+
+  function closeAllFaq() {
+    $('#faq-list').querySelectorAll('.faq-item.open').forEach((el) => { el.classList.remove('open'); el.querySelector('.faq-q').setAttribute('aria-expanded', 'false'); });
+  }
+
+  function enterFaq() {
+    closeAllFaq();
+    show('faq');
+  }
+
+  // Build the opened Thailand card underneath (so "back" has somewhere to go), then show the FAQ.
+  function openFaqDirect(win) {
+    giftIndex = CONFIG.gifts.length - 1;
+    const gift = CONFIG.gifts[giftIndex];
+    showReveal(win || SAMPLE_WIN);
+    showOpened(gift);
+    if (gift.final) PlaneRoute.start();
+    enterFaq();
   }
 
   // ─────────────────────────── confetti ───────────────────────────
@@ -398,6 +536,7 @@
 
   // ─────────────────────────── boot ───────────────────────────
   renderGreeting();
+  renderFaq();
   $('#btn-to-gift').addEventListener('click', () => { Sound.unlock(); Sound.click(); enterGame(); });
   window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
   const muteBtn = $('#btn-mute');
@@ -409,17 +548,20 @@
   $('#btn-letter-gift').addEventListener('click', () => { Sound.click(); enterGame(); });
 
   // Dev preview: index.html?gift=2 shows the wrapped box for gift #3; add &open=1 to open it;
-  // index.html?screen=game jumps straight to the machine; ?screen=letter opens the greeting.
+  // index.html?screen=game jumps straight to the machine; ?screen=letter opens the greeting;
+  // ?screen=faq opens the Q&A page (with the Thailand card behind it).
   const qs = new URLSearchParams(location.search);
   if (qs.has('gift')) {
     giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, parseInt(qs.get('gift'), 10) || 0));
-    const sample = { style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] }, size: 50 };
-    showReveal(sample);
+    showReveal(SAMPLE_WIN);
     if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; showOpened(gift); if (gift.final) PlaneRoute.start(); }
   } else if (qs.get('screen') === 'game') {
     enterGame();
   } else if (qs.get('screen') === 'letter') {
     show('letter');
+  } else if (qs.get('screen') === 'faq') {
+    openFaqDirect();
+    if (qs.has('open')) $('#faq-list').querySelectorAll('.faq-q')[parseInt(qs.get('open'), 10) || 0]?.click();  // ?screen=faq&open=2 expands item #3
   } else {
     restore();
   }
@@ -431,6 +573,7 @@
     giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, s.giftIndex | 0));
     if (s.screen === 'letter') { show('letter'); return; }
     if (s.screen === 'game') { enterGame(); return; }
+    if (s.screen === 'faq') { openFaqDirect(s.style ? { style: s.style, size: s.size || 50 } : null); return; }
     if (s.screen === 'reveal' && s.style) {
       showReveal({ style: s.style, size: s.size || 50 });
       if (s.stage === 'opened') {
