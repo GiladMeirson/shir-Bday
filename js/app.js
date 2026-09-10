@@ -2,7 +2,7 @@
  * Everything you may want to edit lives in CONFIG below.
  */
 (function () {
-  'use strict';
+  "use strict";
 
   // ═══════════════════════════════════════════════════════════════════════
   //  CONFIG — עריכה כאן בלבד
@@ -51,7 +51,7 @@
         final: true,
         img: "assets/thailand-present.jpeg",
         music: "assets/vacation.mp3",
-        sticker: "assets/thailand-sticker.webp",   // animated WebP (WhatsApp sticker) over the photo
+        sticker: "assets/thailand-sticker.webp", // animated WebP (WhatsApp sticker) over the photo
         kicker: "המתנה האמיתית",
         title: "טסים לתאילנד! 🌴",
         sub: `טיסות, מלונות, חופים, ים, והרבה רגעים שניצור ביחד.
@@ -97,8 +97,8 @@
       kicker: "שאלות ותשובות",
       title: "רגע..מה?! 🤯",
       sub: "כל מה שעובר לך עכשיו בראש — כבר חשבתי על זה. לחצי על שאלה כדי לראות את התשובה.",
-      asker: "שיר",       // מי שואלת (מופיע ליד השאלה)
-      answerer: "גלעד",   // מי עונה (מופיע ליד התשובה)
+      asker: "שיר", // מי שואלת (מופיע ליד השאלה)
+      answerer: "גלעד", // מי עונה (מופיע ליד התשובה)
       items: [
         {
           q: "אבל מה עם ארבל?",
@@ -124,6 +124,10 @@
           q: "האם צריך חיסונים?",
           a: "גם זה נבדק. ילדים מעל גיל שנה לא צריכים חיסונים, הם כבר עשו כל מה שצריך — וגם אנחנו לא.",
         },
+        {
+          q: "האם צריך ויזה ?",
+          a: "לא צריך ויזה מיוחדת, 72 שעות לפני הנחיתה צריך למלא טופס וזהו.",
+        },
       ],
       outro: "יש עוד שאלה? תשאלי אותי ישירות 😘",
       backLabel: "↩ חזרה למתנה",
@@ -132,32 +136,56 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   const $ = (s) => document.querySelector(s);
-  const screens = { intro: $('#screen-intro'), letter: $('#screen-letter'), game: $('#screen-game'), reveal: $('#screen-reveal'), faq: $('#screen-faq') };
-  let game = null, giftIndex = 0, pendingWin = null;
+  const screens = {
+    intro: $("#screen-intro"),
+    letter: $("#screen-letter"),
+    game: $("#screen-game"),
+    reveal: $("#screen-reveal"),
+    faq: $("#screen-faq"),
+  };
+  let game = null,
+    giftIndex = 0,
+    pendingWin = null;
   // Wrapping used when a reveal is shown without a real catch (dev preview / restore without a saved style).
-  const SAMPLE_WIN = { style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] }, size: 50 };
+  const SAMPLE_WIN = {
+    style: { wrap: [8, 78, 58], ribbon: [45, 88, 62] },
+    size: 50,
+  };
 
   // Gift photos are big (up to a few MB). Fetch + decode them ahead of time so the card never
   // paints the previous gift's picture while the next one is still loading.
   const Preload = {
-    imgs: new Map(),   // url -> <img> (kept alive so the decoded bitmap stays cached)
+    imgs: new Map(), // url -> <img> (kept alive so the decoded bitmap stays cached)
     image(url) {
       let el = this.imgs.get(url);
       if (!el) {
-        el = new Image(); el.decoding = 'async'; el.src = url;
-        el.decode?.().catch(() => {});     // warm the decoded bitmap; failures just fall back to a normal load
+        el = new Image();
+        el.decoding = "async";
+        el.src = url;
+        el.decode?.().catch(() => {}); // warm the decoded bitmap; failures just fall back to a normal load
         this.imgs.set(url, el);
       }
       return el;
     },
-    gift(g) { if (g.img) this.image(g.img); if (g.sticker) this.image(g.sticker); },
+    gift(g) {
+      if (g.img) this.image(g.img);
+      if (g.sticker) this.image(g.sticker);
+    },
     // Load the remaining gifts one after another (current gift first) so they don't compete for bandwidth.
     ahead(from = giftIndex) {
       const rest = CONFIG.gifts.slice(from);
       const next = () => {
-        const g = rest.shift(); if (!g) return;
-        const el = this.image(g.img); if (g.sticker) this.image(g.sticker);
-        (el.complete ? Promise.resolve() : new Promise((r) => { el.addEventListener('load', r, { once: true }); el.addEventListener('error', r, { once: true }); })).then(next);
+        const g = rest.shift();
+        if (!g) return;
+        const el = this.image(g.img);
+        if (g.sticker) this.image(g.sticker);
+        (el.complete
+          ? Promise.resolve()
+          : new Promise((r) => {
+              el.addEventListener("load", r, { once: true });
+              el.addEventListener("error", r, { once: true });
+            })
+        ).then(next);
       };
       next();
     },
@@ -165,14 +193,29 @@
 
   // Progress survives a refresh (sessionStorage: cleared when the tab/site is closed).
   // Shape: { screen, giftIndex, stage: 'wrapped' | 'opened' | null, style, size }
-  const STORE_KEY = 'shir-bday-state';
+  const STORE_KEY = "shir-bday-state";
   const State = {
-    load() { try { return JSON.parse(sessionStorage.getItem(STORE_KEY)) || null; } catch { return null; } },
-    save(patch) { try { sessionStorage.setItem(STORE_KEY, JSON.stringify(Object.assign(this.load() || {}, patch))); } catch { /* private mode etc. */ } },
+    load() {
+      try {
+        return JSON.parse(sessionStorage.getItem(STORE_KEY)) || null;
+      } catch {
+        return null;
+      }
+    },
+    save(patch) {
+      try {
+        sessionStorage.setItem(
+          STORE_KEY,
+          JSON.stringify(Object.assign(this.load() || {}, patch)),
+        );
+      } catch {
+        /* private mode etc. */
+      }
+    },
   };
 
   function show(name) {
-    for (const k in screens) screens[k].classList.toggle('active', k === name);
+    for (const k in screens) screens[k].classList.toggle("active", k === name);
     window.scrollTo(0, 0);
     State.save({ screen: name, giftIndex, stage: null });
   }
@@ -182,9 +225,13 @@
 
   // ─────────────────────────── intro ───────────────────────────
   function renderGreeting() {
-    const el = $('#greeting-text');
+    const el = $("#greeting-text");
     const text = CONFIG.greeting.trim();
-    if (!text || /^\[.*\]$/s.test(text.replace(/\n+/g, ' ').trim()) || text.startsWith('[')) {
+    if (
+      !text ||
+      /^\[.*\]$/s.test(text.replace(/\n+/g, " ").trim()) ||
+      text.startsWith("[")
+    ) {
       el.innerHTML = `<span class="placeholder">📝 כאן תופיע הברכה — ערוך את CONFIG.greeting בקובץ js/app.js</span>`;
     } else {
       el.textContent = text;
@@ -192,130 +239,233 @@
   }
 
   // ─────────────────────────── HUD ───────────────────────────
-  const hud = $('#hud-msg');
+  const hud = $("#hud-msg");
   function say(text, mood) {
     hud.textContent = text;
-    hud.classList.remove('pop', 'bad', 'good');
+    hud.classList.remove("pop", "bad", "good");
     void hud.offsetWidth;
-    hud.classList.add('pop'); if (mood) hud.classList.add(mood);
+    hud.classList.add("pop");
+    if (mood) hud.classList.add(mood);
   }
   const MSG = {
-    ready: ['הזיזי את הזרוע עם החצים, ולחצי על הכפתור האדום', 'כווני טוב… ותפסי!', 'קדימה, איזו מתנה קוראת לך?'],
-    empty: ['פספוס! הזרוע חזרה ריקה 😅', 'כלום. אפילו לא נייר עטיפה.', 'זה כמו במכונה האמיתית — נסי שוב'],
-    slip: ['אוי לא! המתנה נשמטה בדרך 😬', 'הייתה לך! ואז… לא 😩', 'החזקה חלשה מדי — נשמט'],
-    nearmiss: ['כמעעעט! נפלה ליד הפתח 🙈', 'נחתה על השפה ונפלה חזרה… כמו בחיים', 'סנטימטר מהפתח. סנטימטר!'],
-    grab: ['תפסת משהו! עכשיו שלא ייפול…', 'יש אחיזה! מחזיקים אצבעות 🤞'],
+    ready: [
+      "הזיזי את הזרוע עם החצים, ולחצי על הכפתור האדום",
+      "כווני טוב… ותפסי!",
+      "קדימה, איזו מתנה קוראת לך?",
+    ],
+    empty: [
+      "פספוס! הזרוע חזרה ריקה 😅",
+      "כלום. אפילו לא נייר עטיפה.",
+      "זה כמו במכונה האמיתית — נסי שוב",
+    ],
+    slip: [
+      "אוי לא! המתנה נשמטה בדרך 😬",
+      "הייתה לך! ואז… לא 😩",
+      "החזקה חלשה מדי — נשמט",
+    ],
+    nearmiss: [
+      "כמעעעט! נפלה ליד הפתח 🙈",
+      "נחתה על השפה ונפלה חזרה… כמו בחיים",
+      "סנטימטר מהפתח. סנטימטר!",
+    ],
+    grab: ["תפסת משהו! עכשיו שלא ייפול…", "יש אחיזה! מחזיקים אצבעות 🤞"],
   };
   const pick = (k) => MSG[k][Math.floor(Math.random() * MSG[k].length)];
 
   // ─────────────────────────── game screen ───────────────────────────
   function setupGame() {
-    game = new ClawGame($('#claw-canvas'), {
-      title: CONFIG.marqueeTitle, roundTime: CONFIG.roundSeconds,
+    game = new ClawGame($("#claw-canvas"), {
+      title: CONFIG.marqueeTitle,
+      roundTime: CONFIG.roundSeconds,
       onEvent(type, data) {
         switch (type) {
-          case 'drop': Sound.drop(); say('יורדת…'); break;
-          case 'close': Sound.clank(data.hit); break;
-          case 'grab': Sound.grab(); say(pick('grab'), 'good'); break;
-          case 'release': Sound.release(); break;
-          case 'home': Sound.home(); break;
-          case 'thud': Sound.thud(data.speed); break;
-          case 'tick': Sound.motor.update(data.state, data.vx); break;
-          case 'empty': Sound.miss(); say(pick('empty'), 'bad'); break;
-          case 'slip': Sound.slip(); say(pick('slip'), 'bad'); break;
-          case 'nearmiss': Sound.miss(); say(pick('nearmiss'), 'bad'); break;
-          case 'ready': say(pick('ready')); break;
-          case 'win': onWin(data); break;
+          case "drop":
+            Sound.drop();
+            say("יורדת…");
+            break;
+          case "close":
+            Sound.clank(data.hit);
+            break;
+          case "grab":
+            Sound.grab();
+            say(pick("grab"), "good");
+            break;
+          case "release":
+            Sound.release();
+            break;
+          case "home":
+            Sound.home();
+            break;
+          case "thud":
+            Sound.thud(data.speed);
+            break;
+          case "tick":
+            Sound.motor.update(data.state, data.vx);
+            break;
+          case "empty":
+            Sound.miss();
+            say(pick("empty"), "bad");
+            break;
+          case "slip":
+            Sound.slip();
+            say(pick("slip"), "bad");
+            break;
+          case "nearmiss":
+            Sound.miss();
+            say(pick("nearmiss"), "bad");
+            break;
+          case "ready":
+            say(pick("ready"));
+            break;
+          case "win":
+            onWin(data);
+            break;
         }
       },
     });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => game.refreshLayers());
+    if (document.fonts && document.fonts.ready)
+      document.fonts.ready.then(() => game.refreshLayers());
 
     // Controls: hold-to-move buttons + keyboard.
-    const left = $('#btn-left'), right = $('#btn-right'), drop = $('#btn-drop');
+    const left = $("#btn-left"),
+      right = $("#btn-right"),
+      drop = $("#btn-drop");
     const held = { left: false, right: false };
-    const applyInput = () => game.setInput((held.right ? 1 : 0) - (held.left ? 1 : 0));
+    const applyInput = () =>
+      game.setInput((held.right ? 1 : 0) - (held.left ? 1 : 0));
     const bindHold = (btn, key) => {
-      const down = (e) => { e.preventDefault(); Sound.unlock(); held[key] = true; btn.classList.add('held'); applyInput(); };
-      const up = (e) => { if (e) e.preventDefault(); held[key] = false; btn.classList.remove('held'); applyInput(); };
-      btn.addEventListener('pointerdown', down);
-      btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('pointerleave', up);
-      btn.addEventListener('contextmenu', (e) => e.preventDefault());
+      const down = (e) => {
+        e.preventDefault();
+        Sound.unlock();
+        held[key] = true;
+        btn.classList.add("held");
+        applyInput();
+      };
+      const up = (e) => {
+        if (e) e.preventDefault();
+        held[key] = false;
+        btn.classList.remove("held");
+        applyInput();
+      };
+      btn.addEventListener("pointerdown", down);
+      btn.addEventListener("pointerup", up);
+      btn.addEventListener("pointercancel", up);
+      btn.addEventListener("pointerleave", up);
+      btn.addEventListener("contextmenu", (e) => e.preventDefault());
     };
-    bindHold(left, 'left'); bindHold(right, 'right');
-    drop.addEventListener('pointerdown', (e) => { e.preventDefault(); Sound.unlock(); drop.classList.add('pressed'); });
-    const release = () => drop.classList.remove('pressed');
-    drop.addEventListener('pointerup', (e) => { e.preventDefault(); release(); if (game.drop()) Sound.click(); });
-    drop.addEventListener('pointercancel', release); drop.addEventListener('pointerleave', release);
-    window.addEventListener('keydown', (e) => {
-      if (!screens.game.classList.contains('active')) return;
-      if (e.key === 'ArrowLeft') { held.left = true; left.classList.add('held'); applyInput(); e.preventDefault(); }
-      if (e.key === 'ArrowRight') { held.right = true; right.classList.add('held'); applyInput(); e.preventDefault(); }
-      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowDown') { if (!e.repeat && game.drop()) Sound.click(); e.preventDefault(); }
+    bindHold(left, "left");
+    bindHold(right, "right");
+    drop.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      Sound.unlock();
+      drop.classList.add("pressed");
     });
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'ArrowLeft') { held.left = false; left.classList.remove('held'); applyInput(); }
-      if (e.key === 'ArrowRight') { held.right = false; right.classList.remove('held'); applyInput(); }
+    const release = () => drop.classList.remove("pressed");
+    drop.addEventListener("pointerup", (e) => {
+      e.preventDefault();
+      release();
+      if (game.drop()) Sound.click();
     });
-    window.addEventListener('blur', () => { held.left = held.right = false; applyInput(); });
+    drop.addEventListener("pointercancel", release);
+    drop.addEventListener("pointerleave", release);
+    window.addEventListener("keydown", (e) => {
+      if (!screens.game.classList.contains("active")) return;
+      if (e.key === "ArrowLeft") {
+        held.left = true;
+        left.classList.add("held");
+        applyInput();
+        e.preventDefault();
+      }
+      if (e.key === "ArrowRight") {
+        held.right = true;
+        right.classList.add("held");
+        applyInput();
+        e.preventDefault();
+      }
+      if (e.key === " " || e.key === "Enter" || e.key === "ArrowDown") {
+        if (!e.repeat && game.drop()) Sound.click();
+        e.preventDefault();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft") {
+        held.left = false;
+        left.classList.remove("held");
+        applyInput();
+      }
+      if (e.key === "ArrowRight") {
+        held.right = false;
+        right.classList.remove("held");
+        applyInput();
+      }
+    });
+    window.addEventListener("blur", () => {
+      held.left = held.right = false;
+      applyInput();
+    });
     game.start();
   }
 
   function enterGame() {
     Sound.music.stop();
-    show('game');
+    show("game");
     Preload.ahead();
     if (!game) setupGame();
     game.setEnabled(true);
-    say(giftIndex === 0 ? MSG.ready[0] : 'אוקיי… בואי ננסה מתנה אחרת 🎯');
+    say(giftIndex === 0 ? MSG.ready[0] : "אוקיי… בואי ננסה מתנה אחרת 🎯");
   }
 
   // ─────────────────────────── win → reveal ───────────────────────────
   function onWin(data) {
     Sound.win();
-    say('תפסת! 🎉', 'good');
-    game.setEnabled(false); game.setInput(0);
+    say("תפסת! 🎉", "good");
+    game.setEnabled(false);
+    game.setInput(0);
     pendingWin = data;
     setTimeout(() => showReveal(data), 1100);
   }
 
-  function hslCss([h, s, l]) { return `hsl(${h} ${s}% ${l}%)`; }
+  function hslCss([h, s, l]) {
+    return `hsl(${h} ${s}% ${l}%)`;
+  }
 
   function showReveal(data) {
     const gift = CONFIG.gifts[Math.min(giftIndex, CONFIG.gifts.length - 1)];
-    Preload.gift(gift);   // caught: make sure this gift's photo is in by the time the box is opened
-    const box = $('#giftbox');
-    box.style.setProperty('--wrap', hslCss(data.style.wrap));
-    box.style.setProperty('--ribbon', hslCss(data.style.ribbon));
-    box.classList.remove('opening', 'gone');
-    $('#wrapped').hidden = false;
-    $('#wrapped-caption').textContent = gift.caption;
-    const card = $('#gift-card');
-    card.hidden = true; card.classList.toggle('final', !!gift.final);
-    show('reveal');
-    State.save({ stage: 'wrapped', style: data.style, size: data.size });
+    Preload.gift(gift); // caught: make sure this gift's photo is in by the time the box is opened
+    const box = $("#giftbox");
+    box.style.setProperty("--wrap", hslCss(data.style.wrap));
+    box.style.setProperty("--ribbon", hslCss(data.style.ribbon));
+    box.classList.remove("opening", "gone");
+    $("#wrapped").hidden = false;
+    $("#wrapped-caption").textContent = gift.caption;
+    const card = $("#gift-card");
+    card.hidden = true;
+    card.classList.toggle("final", !!gift.final);
+    show("reveal");
+    State.save({ stage: "wrapped", style: data.style, size: data.size });
     box.onclick = () => openGift(gift);
   }
 
   // Card visible, box gone — used after the opening animation and when restoring an opened gift.
   function showOpened(gift) {
-    $('#wrapped').hidden = true;
-    $('#giftbox').classList.remove('opening');
+    $("#wrapped").hidden = true;
+    $("#giftbox").classList.remove("opening");
     fillCard(gift);
-    $('#gift-card').hidden = false;
-    Sound.music.play(gift.music);   // per-gift track (Ras al-Khaimah / Thailand); stops any previous one
-    State.save({ stage: 'opened' });
+    $("#gift-card").hidden = false;
+    Sound.music.play(gift.music); // per-gift track (Ras al-Khaimah / Thailand); stops any previous one
+    State.save({ stage: "opened" });
   }
 
   function openGift(gift) {
-    const box = $('#giftbox');
-    if (box.classList.contains('opening')) return;
+    const box = $("#giftbox");
+    if (box.classList.contains("opening")) return;
     Sound.open();
     spawnSparks(box, gift.final ? 26 : 16);
-    box.classList.add('opening');
-    $('#wrapped-caption').innerHTML = '<span class="opening-fx">✨ פותחים… ✨</span>';
+    box.classList.add("opening");
+    $("#wrapped-caption").innerHTML =
+      '<span class="opening-fx">✨ פותחים… ✨</span>';
     setTimeout(() => {
-      box.classList.add('gone');
+      box.classList.add("gone");
       setTimeout(() => {
         showOpened(gift);
         // Confetti scales with the gift: a polite sprinkle for #1, the works for Thailand.
@@ -334,56 +484,75 @@
   }
 
   // Glowing sparks + little stars thrown out of the box; each gets its own direction/delay.
-  const SPARK_COLORS = ['#f6c453', '#fff4e6', '#ff9ecb', '#7fe3d3', '#ffd978'];
+  const SPARK_COLORS = ["#f6c453", "#fff4e6", "#ff9ecb", "#7fe3d3", "#ffd978"];
   function spawnSparks(box, n) {
-    box.querySelectorAll('.gb-spark').forEach((el) => el.remove());
+    box.querySelectorAll(".gb-spark").forEach((el) => el.remove());
     for (let i = 0; i < n; i++) {
-      const el = document.createElement('span');
-      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;          // mostly upward
+      const el = document.createElement("span");
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4; // mostly upward
       const r = 110 + Math.random() * 150;
-      el.className = 'gb-spark' + (Math.random() < 0.35 ? ' star' : '');
-      el.style.setProperty('--dx', `${Math.cos(a) * r}px`);
-      el.style.setProperty('--dy', `${Math.sin(a) * r}px`);
-      el.style.setProperty('--d', `${(Math.random() * 0.35).toFixed(2)}s`);
-      el.style.setProperty('--s', `${6 + Math.random() * 9}px`);
-      el.style.setProperty('--c', SPARK_COLORS[i % SPARK_COLORS.length]);
+      el.className = "gb-spark" + (Math.random() < 0.35 ? " star" : "");
+      el.style.setProperty("--dx", `${Math.cos(a) * r}px`);
+      el.style.setProperty("--dy", `${Math.sin(a) * r}px`);
+      el.style.setProperty("--d", `${(Math.random() * 0.35).toFixed(2)}s`);
+      el.style.setProperty("--s", `${6 + Math.random() * 9}px`);
+      el.style.setProperty("--c", SPARK_COLORS[i % SPARK_COLORS.length]);
       box.appendChild(el);
     }
   }
 
   function fillCard(gift) {
-    const badge = $('#gift-badge');
+    const badge = $("#gift-badge");
     badge.hidden = !gift.final;
-    badge.textContent = '🎁 המתנה האמיתית';
+    badge.textContent = "🎁 המתנה האמיתית";
     // Swap in the preloaded (already decoded) element instead of re-pointing the old <img>,
     // so the previous gift's photo is never shown while the new one loads.
-    let img = $('#gift-img');
+    let img = $("#gift-img");
     const photo = img.parentElement;
     const ready = Preload.image(gift.img);
-    if (ready !== img) { ready.id = 'gift-img'; img.replaceWith(ready); img = ready; }
+    if (ready !== img) {
+      ready.id = "gift-img";
+      img.replaceWith(ready);
+      img = ready;
+    }
     img.alt = gift.title;
-    photo.querySelector('.sticker')?.remove();
+    photo.querySelector(".sticker")?.remove();
     if (gift.sticker) {
-      const st = document.createElement('img');
-      st.className = 'sticker'; st.src = gift.sticker; st.alt = ''; st.setAttribute('aria-hidden', 'true');
+      const st = document.createElement("img");
+      st.className = "sticker";
+      st.src = gift.sticker;
+      st.alt = "";
+      st.setAttribute("aria-hidden", "true");
       photo.appendChild(st);
     }
-    $('#gift-kicker').textContent = gift.kicker;
-    $('#gift-title').textContent = gift.title;
-    $('#gift-sub').textContent = gift.sub;
-    const extra = $('#gift-extra'); extra.innerHTML = '';
-    const reject = $('#btn-reject');
+    $("#gift-kicker").textContent = gift.kicker;
+    $("#gift-title").textContent = gift.title;
+    $("#gift-sub").textContent = gift.sub;
+    const extra = $("#gift-extra");
+    extra.innerHTML = "";
+    const reject = $("#btn-reject");
     if (gift.final) {
-      extra.innerHTML = boardingPasses(gift.flights) + `<p class="final-note">${gift.finalNote}</p>`
-        + (gift.faqLink && CONFIG.faq ? `<button type="button" class="plan-link faq-link" id="btn-faq">
-            <span class="plan-link-kicker">${gift.faqLink.kicker || ''}</span>
+      extra.innerHTML =
+        boardingPasses(gift.flights) +
+        `<p class="final-note">${gift.finalNote}</p>` +
+        (gift.faqLink && CONFIG.faq
+          ? `<button type="button" class="plan-link faq-link" id="btn-faq">
+            <span class="plan-link-kicker">${gift.faqLink.kicker || ""}</span>
             <span class="plan-link-label">${gift.faqLink.label}</span>
-          </button>` : '');
+          </button>`
+          : "");
       reject.hidden = true;
-      $('#btn-faq')?.addEventListener('click', () => { Sound.click(); enterFaq(); });
+      $("#btn-faq")?.addEventListener("click", () => {
+        Sound.click();
+        enterFaq();
+      });
     } else {
       reject.hidden = false;
-      reject.onclick = () => { Sound.click(); giftIndex++; enterGame(); };
+      reject.onclick = () => {
+        Sound.click();
+        giftIndex++;
+        enterGame();
+      };
     }
   }
 
@@ -412,62 +581,81 @@
     </div>`;
   }
   function boardingPasses(f) {
-    const seats = ['12A', '12B', '12C'];
-    const out = f.passengers.map((p, i) => pass(f.out, f, p, seats[i] || '12D')).join('');
+    const seats = ["12A", "12B", "12C"];
+    const out = f.passengers
+      .map((p, i) => pass(f.out, f, p, seats[i] || "12D"))
+      .join("");
     return `<div class="boarding">${out}</div>`;
   }
 
   // ─────────────────────────── FAQ (שאלות ותשובות) ───────────────────────────
-  const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const initial = (name) => (name || '?').trim().charAt(0);
+  const CHEVRON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const initial = (name) => (name || "?").trim().charAt(0);
 
   function renderFaq() {
     const f = CONFIG.faq;
     if (!f) return;
-    $('#faq-kicker').textContent = f.kicker || '';
-    $('#faq-title').textContent = f.title || '';
-    $('#faq-sub').textContent = f.sub || '';
-    $('#faq-outro').textContent = f.outro || '';
-    $('#faq-outro').hidden = !f.outro;
-    $('#btn-faq-back').textContent = f.backLabel || '↩ חזרה';
-    const list = $('#faq-list'); list.innerHTML = '';
+    $("#faq-kicker").textContent = f.kicker || "";
+    $("#faq-title").textContent = f.title || "";
+    $("#faq-sub").textContent = f.sub || "";
+    $("#faq-outro").textContent = f.outro || "";
+    $("#faq-outro").hidden = !f.outro;
+    $("#btn-faq-back").textContent = f.backLabel || "↩ חזרה";
+    const list = $("#faq-list");
+    list.innerHTML = "";
     (f.items || []).forEach((it, i) => {
-      const item = document.createElement('div');
-      item.className = 'faq-item'; item.style.setProperty('--i', i);
+      const item = document.createElement("div");
+      item.className = "faq-item";
+      item.style.setProperty("--i", i);
       item.innerHTML = `
         <button type="button" class="faq-q" id="faq-q-${i}" aria-expanded="false" aria-controls="faq-a-${i}">
           <span class="faq-avatar faq-avatar-user" aria-hidden="true">${initial(f.asker)}</span>
-          <span class="faq-q-body"><span class="faq-who">${f.asker || ''}</span><span class="faq-q-text">${it.q}</span></span>
+          <span class="faq-q-body"><span class="faq-who">${f.asker || ""}</span><span class="faq-q-text">${it.q}</span></span>
           <span class="faq-chev" aria-hidden="true">${CHEVRON}</span>
         </button>
         <div class="faq-a" id="faq-a-${i}" role="region" aria-labelledby="faq-q-${i}">
           <div class="faq-a-inner">
             <div class="faq-a-row">
               <span class="faq-avatar faq-avatar-me" aria-hidden="true">${initial(f.answerer)}</span>
-              <div class="faq-a-body"><span class="faq-who">${f.answerer || ''}</span><div class="faq-a-text">${it.a}</div></div>
+              <div class="faq-a-body"><span class="faq-who">${f.answerer || ""}</span><div class="faq-a-text">${it.a}</div></div>
             </div>
           </div>
         </div>`;
       list.appendChild(item);
     });
     // Accordion: one open at a time; clicking the open one closes it.
-    list.addEventListener('click', (e) => {
-      const q = e.target.closest('.faq-q'); if (!q) return;
-      const item = q.parentElement, willOpen = !item.classList.contains('open');
+    list.addEventListener("click", (e) => {
+      const q = e.target.closest(".faq-q");
+      if (!q) return;
+      const item = q.parentElement,
+        willOpen = !item.classList.contains("open");
       closeAllFaq();
-      if (willOpen) { item.classList.add('open'); q.setAttribute('aria-expanded', 'true'); }
+      if (willOpen) {
+        item.classList.add("open");
+        q.setAttribute("aria-expanded", "true");
+      }
       Sound.click();
     });
-    $('#btn-faq-back').addEventListener('click', () => { Sound.click(); show('reveal'); State.save({ stage: 'opened' }); });
+    $("#btn-faq-back").addEventListener("click", () => {
+      Sound.click();
+      show("reveal");
+      State.save({ stage: "opened" });
+    });
   }
 
   function closeAllFaq() {
-    $('#faq-list').querySelectorAll('.faq-item.open').forEach((el) => { el.classList.remove('open'); el.querySelector('.faq-q').setAttribute('aria-expanded', 'false'); });
+    $("#faq-list")
+      .querySelectorAll(".faq-item.open")
+      .forEach((el) => {
+        el.classList.remove("open");
+        el.querySelector(".faq-q").setAttribute("aria-expanded", "false");
+      });
   }
 
   function enterFaq() {
     closeAllFaq();
-    show('faq');
+    show("faq");
   }
 
   // Build the opened Thailand card underneath (so "back" has somewhere to go), then show the FAQ.
@@ -482,38 +670,78 @@
 
   // ─────────────────────────── confetti ───────────────────────────
   const Confetti = (() => {
-    const cv = $('#confetti-canvas'); const ctx = cv.getContext('2d');
-    let parts = [], raf = 0, last = 0;
-    const COLORS = ['#f6c453', '#ff6b5a', '#2fb8a6', '#ff9ecb', '#8ad0ff', '#fff4e6'];
-    function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
+    const cv = $("#confetti-canvas");
+    const ctx = cv.getContext("2d");
+    let parts = [],
+      raf = 0,
+      last = 0;
+    const COLORS = [
+      "#f6c453",
+      "#ff6b5a",
+      "#2fb8a6",
+      "#ff9ecb",
+      "#8ad0ff",
+      "#fff4e6",
+    ];
+    function resize() {
+      cv.width = innerWidth * devicePixelRatio;
+      cv.height = innerHeight * devicePixelRatio;
+    }
     function spawn(n, x, y, spread) {
       for (let i = 0; i < n; i++) {
-        const a = -Math.PI / 2 + (Math.random() - 0.5) * spread, sp = 600 + Math.random() * 900;
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * spread,
+          sp = 600 + Math.random() * 900;
         parts.push({
-          x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, w: 8 + Math.random() * 8, h: 5 + Math.random() * 6,
-          rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 14, color: COLORS[i % COLORS.length],
-          wob: Math.random() * Math.PI * 2, life: 0, ttl: 4 + Math.random() * 2, shape: Math.random() < 0.25 ? 'circle' : 'rect',
+          x,
+          y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          w: 8 + Math.random() * 8,
+          h: 5 + Math.random() * 6,
+          rot: Math.random() * Math.PI,
+          vr: (Math.random() - 0.5) * 14,
+          color: COLORS[i % COLORS.length],
+          wob: Math.random() * Math.PI * 2,
+          life: 0,
+          ttl: 4 + Math.random() * 2,
+          shape: Math.random() < 0.25 ? "circle" : "rect",
         });
       }
     }
     function frame(t) {
-      const dt = Math.min(0.033, (t - last) / 1000 || 0.016); last = t;
+      const dt = Math.min(0.033, (t - last) / 1000 || 0.016);
+      last = t;
       ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
       ctx.clearRect(0, 0, innerWidth, innerHeight);
       parts = parts.filter((p) => p.life < p.ttl && p.y < innerHeight + 40);
       for (const p of parts) {
-        p.life += dt; p.vy += 1100 * dt;                          // gravity
-        p.vx *= Math.exp(-2.2 * dt); p.vy *= Math.exp(-1.6 * dt);  // air drag (paper is light)
-        p.wob += dt * 6; p.x += (p.vx + Math.sin(p.wob) * 40) * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        p.life += dt;
+        p.vy += 1100 * dt; // gravity
+        p.vx *= Math.exp(-2.2 * dt);
+        p.vy *= Math.exp(-1.6 * dt); // air drag (paper is light)
+        p.wob += dt * 6;
+        p.x += (p.vx + Math.sin(p.wob) * 40) * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vr * dt;
         const fade = Math.min(1, (p.ttl - p.life) / 0.8);
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = fade;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = fade;
         ctx.fillStyle = p.color;
-        const sq = 0.35 + 0.65 * Math.abs(Math.cos(p.wob * 0.7));  // flutter: foreshortened as it turns
-        if (p.shape === 'circle') { ctx.beginPath(); ctx.ellipse(0, 0, p.w / 2, (p.w / 2) * sq, 0, 0, Math.PI * 2); ctx.fill(); }
-        else ctx.fillRect(-p.w / 2, -(p.h * sq) / 2, p.w, p.h * sq);
+        const sq = 0.35 + 0.65 * Math.abs(Math.cos(p.wob * 0.7)); // flutter: foreshortened as it turns
+        if (p.shape === "circle") {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.w / 2, (p.w / 2) * sq, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else ctx.fillRect(-p.w / 2, -(p.h * sq) / 2, p.w, p.h * sq);
         ctx.restore();
       }
-      if (parts.length) raf = requestAnimationFrame(frame); else { raf = 0; ctx.clearRect(0, 0, innerWidth, innerHeight); }
+      if (parts.length) raf = requestAnimationFrame(frame);
+      else {
+        raf = 0;
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+      }
     }
     return {
       // level 0..1: how big a deal this gift is.
@@ -526,42 +754,94 @@
           spawn(n, innerWidth * 0.2, innerHeight * 0.75, 1.1);
           spawn(n, innerWidth * 0.8, innerHeight * 0.75, 1.1);
         }
-        if (level >= 0.5) setTimeout(() => { spawn(Math.round(120 * level), innerWidth / 2, innerHeight * 0.6, 1.6); }, 500);
-        if (level >= 0.9) setTimeout(() => { spawn(80, innerWidth * 0.5, -10, 2.6); }, 1300);
-        if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
+        if (level >= 0.5)
+          setTimeout(() => {
+            spawn(
+              Math.round(120 * level),
+              innerWidth / 2,
+              innerHeight * 0.6,
+              1.6,
+            );
+          }, 500);
+        if (level >= 0.9)
+          setTimeout(() => {
+            spawn(80, innerWidth * 0.5, -10, 2.6);
+          }, 1300);
+        if (!raf) {
+          last = performance.now();
+          raf = requestAnimationFrame(frame);
+        }
       },
     };
-    })();
-  window.addEventListener('resize', () => { /* canvas resized on next burst */ });
+  })();
+  window.addEventListener("resize", () => {
+    /* canvas resized on next burst */
+  });
 
   // ─────────────────────────── boot ───────────────────────────
   renderGreeting();
   renderFaq();
-  $('#btn-to-gift').addEventListener('click', () => { Sound.unlock(); Sound.click(); enterGame(); });
-  window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
-  const muteBtn = $('#btn-mute');
-  const paintMute = () => { muteBtn.textContent = Sound.muted ? '🔇' : '🔊'; muteBtn.setAttribute('aria-label', Sound.muted ? 'הפעלת צלילים' : 'השתקת צלילים'); muteBtn.classList.toggle('off', Sound.muted); };
-  muteBtn.addEventListener('click', () => { Sound.unlock(); Sound.toggle(); paintMute(); if (!Sound.muted) Sound.click(); });
+  $("#btn-to-gift").addEventListener("click", () => {
+    Sound.unlock();
+    Sound.click();
+    enterGame();
+  });
+  window.addEventListener("pointerdown", () => Sound.unlock(), { once: true });
+  const muteBtn = $("#btn-mute");
+  const paintMute = () => {
+    muteBtn.textContent = Sound.muted ? "🔇" : "🔊";
+    muteBtn.setAttribute(
+      "aria-label",
+      Sound.muted ? "הפעלת צלילים" : "השתקת צלילים",
+    );
+    muteBtn.classList.toggle("off", Sound.muted);
+  };
+  muteBtn.addEventListener("click", () => {
+    Sound.unlock();
+    Sound.toggle();
+    paintMute();
+    if (!Sound.muted) Sound.click();
+  });
   paintMute();
-  $('#btn-to-letter').addEventListener('click', () => { Sound.unlock(); Sound.open(); show('letter'); });
-  $('#btn-letter-back').addEventListener('click', () => { Sound.click(); show('intro'); });
-  $('#btn-letter-gift').addEventListener('click', () => { Sound.click(); enterGame(); });
+  $("#btn-to-letter").addEventListener("click", () => {
+    Sound.unlock();
+    Sound.open();
+    show("letter");
+  });
+  $("#btn-letter-back").addEventListener("click", () => {
+    Sound.click();
+    show("intro");
+  });
+  $("#btn-letter-gift").addEventListener("click", () => {
+    Sound.click();
+    enterGame();
+  });
 
   // Dev preview: index.html?gift=2 shows the wrapped box for gift #3; add &open=1 to open it;
   // index.html?screen=game jumps straight to the machine; ?screen=letter opens the greeting;
   // ?screen=faq opens the Q&A page (with the Thailand card behind it).
   const qs = new URLSearchParams(location.search);
-  if (qs.has('gift')) {
-    giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, parseInt(qs.get('gift'), 10) || 0));
+  if (qs.has("gift")) {
+    giftIndex = Math.max(
+      0,
+      Math.min(CONFIG.gifts.length - 1, parseInt(qs.get("gift"), 10) || 0),
+    );
     showReveal(SAMPLE_WIN);
-    if (qs.get('open') === '1') { const gift = CONFIG.gifts[giftIndex]; showOpened(gift); if (gift.final) PlaneRoute.start(); }
-  } else if (qs.get('screen') === 'game') {
+    if (qs.get("open") === "1") {
+      const gift = CONFIG.gifts[giftIndex];
+      showOpened(gift);
+      if (gift.final) PlaneRoute.start();
+    }
+  } else if (qs.get("screen") === "game") {
     enterGame();
-  } else if (qs.get('screen') === 'letter') {
-    show('letter');
-  } else if (qs.get('screen') === 'faq') {
+  } else if (qs.get("screen") === "letter") {
+    show("letter");
+  } else if (qs.get("screen") === "faq") {
     openFaqDirect();
-    if (qs.has('open')) $('#faq-list').querySelectorAll('.faq-q')[parseInt(qs.get('open'), 10) || 0]?.click();  // ?screen=faq&open=2 expands item #3
+    if (qs.has("open"))
+      $("#faq-list")
+        .querySelectorAll(".faq-q")
+        [parseInt(qs.get("open"), 10) || 0]?.click(); // ?screen=faq&open=2 expands item #3
   } else {
     restore();
   }
@@ -569,14 +849,23 @@
   // Put the user back where they were before a refresh (no sounds/confetti — just the screen).
   function restore() {
     const s = State.load();
-    if (!s || !s.screen || s.screen === 'intro') return;
+    if (!s || !s.screen || s.screen === "intro") return;
     giftIndex = Math.max(0, Math.min(CONFIG.gifts.length - 1, s.giftIndex | 0));
-    if (s.screen === 'letter') { show('letter'); return; }
-    if (s.screen === 'game') { enterGame(); return; }
-    if (s.screen === 'faq') { openFaqDirect(s.style ? { style: s.style, size: s.size || 50 } : null); return; }
-    if (s.screen === 'reveal' && s.style) {
+    if (s.screen === "letter") {
+      show("letter");
+      return;
+    }
+    if (s.screen === "game") {
+      enterGame();
+      return;
+    }
+    if (s.screen === "faq") {
+      openFaqDirect(s.style ? { style: s.style, size: s.size || 50 } : null);
+      return;
+    }
+    if (s.screen === "reveal" && s.style) {
       showReveal({ style: s.style, size: s.size || 50 });
-      if (s.stage === 'opened') {
+      if (s.stage === "opened") {
         const gift = CONFIG.gifts[giftIndex];
         showOpened(gift);
         if (gift.final) PlaneRoute.start();

@@ -500,7 +500,7 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid rgba(127,227,211,.18);
   box-shadow: 0 24px 40px -26px rgba(0,0,0,.85);
   animation: card-in .6s cubic-bezier(.2,.9,.2,1.05) calc(.1s + var(--i, 0) * 70ms) both;
-  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 .faq-item.open {
   border-color: rgba(127,227,211,.55);
@@ -508,6 +508,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .faq-q {
   width: 100%; border: 0; background: transparent; color: #eaf6ff; text-align: start;
+  touch-action: manipulation; /* no double-tap wait on mobile: the tap fires immediately */
   display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
   padding: 14px 16px; font-size: 17px; line-height: 1.4;
   transition: background .2s ease;
@@ -524,22 +525,22 @@ button { font-family: inherit; cursor: pointer; }
 .faq-q-body, .faq-a-body { display: grid; gap: 3px; min-width: 0; }
 .faq-who { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: #7fb3c4; text-transform: uppercase; }
 .faq-q-text { font-weight: 600; overflow-wrap: anywhere; }
-.faq-chev { width: 24px; height: 24px; color: #7fe3d3; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+.faq-chev { width: 24px; height: 24px; color: #7fe3d3; transition: transform .18s ease-out; }
 .faq-chev svg { width: 100%; height: 100%; display: block; }
 .faq-item.open .faq-chev { transform: rotate(180deg); }
 
-/* Expand/collapse via grid rows (animates to the answer's natural height). */
-.faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .38s cubic-bezier(.2,.8,.2,1); }
+/* Expand/collapse via grid rows (animates to the answer's natural height). Kept short so a tap feels instant. */
+.faq-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .18s ease-out; }
 .faq-item.open .faq-a { grid-template-rows: 1fr; }
 .faq-a-inner { overflow: hidden; min-height: 0; }
 .faq-a-row {
   display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 12px;
   margin: 0 12px 12px; padding: 12px 12px 14px; border-radius: 14px;
   background: rgba(246,196,83,.07); border: 1px dashed rgba(246,196,83,.35);
-  opacity: 0; transform: translateY(-8px);
-  transition: opacity .3s ease .05s, transform .35s cubic-bezier(.2,.8,.2,1) .05s;
+  opacity: 0;
+  transition: opacity .12s ease-out;
 }
-.faq-item.open .faq-a-row { opacity: 1; transform: none; }
+.faq-item.open .faq-a-row { opacity: 1; }
 .faq-a-row .faq-who { color: var(--gold); }
 .faq-a-text { font-size: 16px; line-height: 1.65; color: #eaf6ff; overflow-wrap: anywhere; }
 .faq-a-text b { color: var(--gold); }
