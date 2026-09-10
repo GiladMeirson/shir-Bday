@@ -6,6 +6,7 @@
  *   one-shots: click drop clank grab slip miss thud release home win fanfare
  *              open popper crowd chime whoosh
  *   SFX.music.play(src) / stop()  background track (HTMLAudio, mp3 from assets/); follows mute
+ *   SFX.music.preload(src)        fetch a track ahead so play() starts instantly
  */
 window.SFX = (() => {
   'use strict';
@@ -205,15 +206,26 @@ window.SFX = (() => {
   }
 
   // Background music: one <audio> at a time. play() swaps tracks; the same src keeps playing.
+  // preload(src) fetches a track ahead of time so play() starts instantly instead of hitting the network.
   const music = (() => {
     let el = null, src = '';
+    const cache = new Map(); // src -> <audio> already fetching/buffered
+    function preload(next) {
+      if (!next) return null;
+      let a = cache.get(next);
+      if (!a) {
+        a = new Audio(); a.preload = 'auto'; a.src = next; a.load();
+        cache.set(next, a);
+      }
+      return a;
+    }
     function play(next, { volume = 0.7, loop = true } = {}) {
       try {
         if (!next) return stop();
         if (el && src === next && !el.paused) return;
         stop();
         src = next;
-        el = new Audio(next); el.loop = loop; el.volume = volume; el.muted = muted;
+        el = preload(next); el.loop = loop; el.volume = volume; el.muted = muted;
         el.play().catch((e) => console.warn('[sfx music]', e));
       } catch (e) { console.warn('[sfx music]', e); }
     }
@@ -224,7 +236,7 @@ window.SFX = (() => {
     }
     function setMuted(b) { if (el) el.muted = b; }
     document.addEventListener('visibilitychange', () => { try { if (!el) return; document.hidden ? el.pause() : el.play().catch(() => {}); } catch (e) {} });
-    return { play, stop, setMuted, get src() { return src; } };
+    return { play, stop, preload, setMuted, get src() { return src; } };
   })();
 
   const api = {

@@ -180,6 +180,7 @@
     gift(g) {
       if (g.img) this.image(g.img);
       if (g.sticker) this.image(g.sticker);
+      if (g.music) Sound.music.preload(g.music); // so the track starts the instant the card shows
     },
     // Load the remaining gifts one after another (current gift first) so they don't compete for bandwidth.
     ahead(from = giftIndex) {
@@ -420,6 +421,7 @@
     Sound.music.stop();
     show("game");
     Preload.ahead();
+    Preload.gift(CONFIG.gifts[Math.min(giftIndex, CONFIG.gifts.length - 1)]); // photo + music of the gift about to be caught
     if (!game) setupGame();
     game.setEnabled(true);
     say(giftIndex === 0 ? MSG.ready[0] : "אוקיי… בואי ננסה מתנה אחרת 🎯");
