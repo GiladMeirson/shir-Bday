@@ -27,6 +27,7 @@
     gifts: [
       {
         img: "assets/terrarium-present.jpg",
+        music: "assets/fail-sound.mp3",
         kicker: "חוויה מתקנת ליומולדת 30",
         title: "סדנת טרריום 🌿",
         sub: "אותו קונספט, הפעם עם ציפיות נמוכות יותר. זכית בהזדמנות שנייה לעשות משהו שלא רצית לעשות פעם ראשונה",
@@ -34,6 +35,7 @@
       },
       {
         img: "assets/tveria-present.png",
+        music: "assets/tveria.mp3",
         kicker: "סוף שבוע זוגי (עם הילדה)",
         title: "חופשה במלון בטבריה 🏨",
         sub: `שני לילות בטבריה. כי רציתי לקחת אותך לחו"ל, אבל אז פתחתי את חשבון הבנק. אז אותה כנרת, אותם פקקים — הפעם עם מזוודה.`,
@@ -452,7 +454,7 @@
     $("#giftbox").classList.remove("opening");
     fillCard(gift);
     $("#gift-card").hidden = false;
-    Sound.music.play(gift.music); // per-gift track (Ras al-Khaimah / Thailand); stops any previous one
+    Sound.music.play(gift.music); // per-gift track; stops any previous one
     State.save({ stage: "opened" });
   }
 
